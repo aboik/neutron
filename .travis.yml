@@ -1,0 +1,56 @@
+language: python
+sudo: false
+python:
+  - "2.7"
+branches:
+  only:
+    - "ipv6_fip"
+install:
+  - "git clone git://github.com/yyuu/pyenv.git ~/.pyenv"
+  - "echo 'export PYENV_ROOT=\"$HOME/.pyenv\"' >> ~/.bash_profile"
+  - "echo 'export PATH=\"$PYENV_ROOT/bin:$PATH\"' >> ~/.bash_profile"
+  - "echo 'eval \"$(pyenv init -)\"' >> ~/.bash_profile"
+  - "source ~/.bash_profile"
+  - "pyenv install 2.7.6"
+  - "pyenv rehash"
+  - "pyenv global 2.7.6"
+  - "pip install tox"
+env:
+  global:
+    - TEST_COMMAND="tox -v -e"
+    - PY27="py27 --"
+    - UT="neutron.tests.unit"
+    - PEP8="pep8"
+    - BASE="$UT.test_"
+    - AGENT="$UT.agent"
+    - API="$UT.api"
+    - DB="$UT.db"
+    - NOTIFIERS="$UT.notifiers"
+    - ML2="$UT.ml2"
+    - SERVICES="$UT.services"
+    - SRIOV="$UT.sriov"
+    - METAPLUGIN="$UT.metaplugin"
+    - OFA="$UT.ofagent"
+    - OVS="$UT.openvswitch"
+    - LINUXBRIDGE="$UT.linuxbridge"
+    - BROCADE="$UT.brocade"
+    - EMBRANE="$UT.embrane"
+    - MIDONET="$UT.midonet"
+    - PLUMGRID="$UT.plumgrid"
+    - HYPERV="$UT.hyperv"
+    - ONECONVERGENCE="$UT.oneconvergence"
+    - MLNX="$UT.mlnx"
+    - NUAGE="$UT.nuage"
+    - OPENCONTRAIL="$UT.opencontrail"
+    - IBM="$UT.ibm"
+    - BIGSWITCH="$UT.bigswitch"
+    - NEC="$UT.nec"
+    - CISCO="$UT.cisco"
+  matrix:
+    - TEST="$PEP8"
+    - TEST="$PY27 $BASE $API $DB $NOTIFIERS $OFA $OVS $LINUXBRIDGE"
+    - TEST="$PY27 $ML2 $SERVICES $SRIOV $METAPLUGIN"
+    - TEST="$PY27 $BROCADE $EMBRANE $MIDONET $PLUMGRID $HYPERV $ONECONVERGENCE $MLNX $NUAGE $OPENCONTRAIL $IBM"
+    - TEST="$PY27 $BIGSWITCH $NEC $CISCO"
+script: 
+  - $TEST_COMMAND $TEST

@@ -114,6 +114,7 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
             admin_state_up=True,
             status=constants.NET_STATUS_ACTIVE,
             enable_snat=True,
+            enable_ipv6_nat=False,
             gw_port_id=None)
         self.context.session.add(self.router)
         self.context.session.flush()
@@ -211,7 +212,8 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         self.context.session.add(self.router)
         self.context.session.flush()
 
-    def _test_update_router_gw(self, gw_info, expected_enable_snat):
+    def _test_update_router_gw(self, gw_info, expected_enable_snat,
+                               expected_enable_ipv6_nat):
         self.target_object._update_router_gw_info(
             self.context, self.router.id, gw_info)
         router = self.target_object._get_router(
@@ -224,18 +226,24 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         except AttributeError:
             self.assertIsNone(router.gw_port)
         self.assertEqual(expected_enable_snat, router.enable_snat)
+        self.assertEqual(expected_enable_ipv6_nat, router.enable_ipv6_nat)
 
     def test_update_router_gw_with_gw_info_none(self):
-        self._test_update_router_gw(None, True)
+        self._test_update_router_gw(None, True, False)
 
     def test_update_router_gw_with_network_only(self):
         info = {'network_id': self.ext_net_id}
-        self._test_update_router_gw(info, True)
+        self._test_update_router_gw(info, True, False)
 
     def test_update_router_gw_with_snat_disabled(self):
         info = {'network_id': self.ext_net_id,
                 'enable_snat': False}
-        self._test_update_router_gw(info, False)
+        self._test_update_router_gw(info, False, False)
+
+    def test_update_router_gw_with_ipv6_nat_enabled(self):
+        info = {'network_id': self.ext_net_id,
+                'enable_ipv6_nat': True}
+        self._test_update_router_gw(info, True, True)
 
     def test_make_router_dict_no_ext_gw(self):
         self._reset_ext_gw()
@@ -246,6 +254,7 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         router_dict = self.target_object._make_router_dict(self.router)
         self.assertEqual({'network_id': self.ext_net_id,
                           'enable_snat': True,
+                          'enable_ipv6_nat': False,
                           'external_fixed_ips': []},
                          router_dict[l3.EXTERNAL_GW_INFO])
 
@@ -254,6 +263,16 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         router_dict = self.target_object._make_router_dict(self.router)
         self.assertEqual({'network_id': self.ext_net_id,
                           'enable_snat': False,
+                          'enable_ipv6_nat': False,
+                          'external_fixed_ips': []},
+                         router_dict[l3.EXTERNAL_GW_INFO])
+
+    def test_make_router_dict_with_ext_gw_ipv6_nat_enabled(self):
+        self.router.enable_ipv6_nat = True
+        router_dict = self.target_object._make_router_dict(self.router)
+        self.assertEqual({'network_id': self.ext_net_id,
+                          'enable_snat': True,
+                          'enable_ipv6_nat': True,
                           'external_fixed_ips': []},
                          router_dict[l3.EXTERNAL_GW_INFO])
 
@@ -267,6 +286,7 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         router = routers[0]
         self.assertIsNone(router.get('gw_port'))
         self.assertIsNone(router.get('enable_snat'))
+        self.assertIsNone(router.get('enable_ipv6_nat'))
 
     def test_build_routers_list_with_ext_gw(self):
         router_dict = self.target_object._make_router_dict(self.router)
@@ -278,6 +298,7 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         self.assertIsNotNone(router.get('gw_port'))
         self.assertEqual(FAKE_GW_PORT_ID, router['gw_port']['id'])
         self.assertTrue(router.get('enable_snat'))
+        self.assertFalse(router.get('enable_ipv6_nat'))
 
     def test_build_routers_list_with_ext_gw_snat_disabled(self):
         self.router.enable_snat = False
@@ -290,6 +311,20 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         self.assertIsNotNone(router.get('gw_port'))
         self.assertEqual(FAKE_GW_PORT_ID, router['gw_port']['id'])
         self.assertFalse(router.get('enable_snat'))
+        self.assertFalse(router.get('enable_ipv6_nat'))
+
+    def test_build_routers_list_with_ext_gw_ipv6_nat_enabled(self):
+        self.router.enable_ipv6_nat = True
+        router_dict = self.target_object._make_router_dict(self.router)
+        routers = self.target_object._build_routers_list(
+            self.context, [router_dict],
+            self._get_gwports_dict([self.router.gw_port]))
+        self.assertEqual(1, len(routers))
+        router = routers[0]
+        self.assertIsNotNone(router.get('gw_port'))
+        self.assertEqual(FAKE_GW_PORT_ID, router['gw_port']['id'])
+        self.assertTrue(router.get('enable_snat'))
+        self.assertTrue(router.get('enable_ipv6_nat'))
 
     def test_build_routers_list_with_gw_port_mismatch(self):
         router_dict = self.target_object._make_router_dict(self.router)
@@ -299,6 +334,7 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         router = routers[0]
         self.assertIsNone(router.get('gw_port'))
         self.assertIsNone(router.get('enable_snat'))
+        self.assertIsNone(router.get('enable_ipv6_nat'))
 
 
 class ExtGwModeIntTestCase(test_db_plugin.NeutronDbPluginV2TestCase,
@@ -328,12 +364,16 @@ class ExtGwModeIntTestCase(test_db_plugin.NeutronDbPluginV2TestCase,
 
     def _set_router_external_gateway(self, router_id, network_id,
                                      snat_enabled=None,
+                                     ipv6_nat_enabled=None,
                                      expected_code=exc.HTTPOk.code,
                                      neutron_context=None):
         ext_gw_info = {'network_id': network_id}
-        # Need to set enable_snat also if snat_enabled == False
+        # Need to set enable_snat if snat_enabled == False and
+        # need to set enable_ipv6_nat if ipv6_nat_enabled == True
         if snat_enabled is not None:
             ext_gw_info['enable_snat'] = snat_enabled
+        if ipv6_nat_enabled is not None:
+            ext_gw_info['enable_ipv6_nat'] = ipv6_nat_enabled
         return self._update('routers', router_id,
                             {'router': {'external_gateway_info':
                                         ext_gw_info}},
@@ -353,7 +393,9 @@ class ExtGwModeIntTestCase(test_db_plugin.NeutronDbPluginV2TestCase,
                 self.assertEqual(res['router'][k], v)
 
     def _test_router_create_show_ext_gwinfo(self, snat_input_value,
-                                            snat_expected_value):
+                                            snat_expected_value,
+                                            ipv6_nat_input_value,
+                                            ipv6_nat_expected_value):
         name = 'router1'
         tenant_id = _uuid()
         with self.subnet() as s:
@@ -362,11 +404,14 @@ class ExtGwModeIntTestCase(test_db_plugin.NeutronDbPluginV2TestCase,
             input_value = {'network_id': ext_net_id}
             if snat_input_value in (True, False):
                 input_value['enable_snat'] = snat_input_value
+            if ipv6_nat_input_value in (True, False):
+                input_value['enable_ipv6_nat'] = ipv6_nat_input_value
             expected_value = [('name', name), ('tenant_id', tenant_id),
                               ('admin_state_up', True), ('status', 'ACTIVE'),
                               ('external_gateway_info',
                                {'network_id': ext_net_id,
                                 'enable_snat': snat_expected_value,
+                                'enable_ipv6_nat': ipv6_nat_expected_value,
                                 'external_fixed_ips': [{
                                     'ip_address': mock.ANY,
                                     'subnet_id': s['subnet']['id']}]})]
@@ -378,16 +423,24 @@ class ExtGwModeIntTestCase(test_db_plugin.NeutronDbPluginV2TestCase,
                     self.assertEqual(res['router'][k], v)
 
     def test_router_create_show_ext_gwinfo_default(self):
-        self._test_router_create_show_ext_gwinfo(None, True)
+        self._test_router_create_show_ext_gwinfo(None, True, None, False)
 
     def test_router_create_show_ext_gwinfo_with_snat_enabled(self):
-        self._test_router_create_show_ext_gwinfo(True, True)
+        self._test_router_create_show_ext_gwinfo(True, True, None, False)
 
     def test_router_create_show_ext_gwinfo_with_snat_disabled(self):
-        self._test_router_create_show_ext_gwinfo(False, False)
+        self._test_router_create_show_ext_gwinfo(False, False, None, False)
+
+    def test_router_create_show_ext_gwinfo_with_ipv6_nat_enabled(self):
+        self._test_router_create_show_ext_gwinfo(None, True, True, True)
+
+    def test_router_create_show_ext_gwinfo_with_ipv6_nat_disabled(self):
+        self._test_router_create_show_ext_gwinfo(None, True, False, False)
 
     def _test_router_update_ext_gwinfo(self, snat_input_value,
-                                       snat_expected_value=False,
+                                       snat_expected_value,
+                                       ipv6_nat_input_value,
+                                       ipv6_nat_expected_value,
                                        expected_http_code=exc.HTTPOk.code):
         with self.router() as r:
             with self.subnet() as s:
@@ -397,6 +450,7 @@ class ExtGwModeIntTestCase(test_db_plugin.NeutronDbPluginV2TestCase,
                     self._set_router_external_gateway(
                         r['router']['id'], ext_net_id,
                         snat_enabled=snat_input_value,
+                        ipv6_nat_enabled=ipv6_nat_input_value,
                         expected_code=expected_http_code)
                     if expected_http_code != exc.HTTPOk.code:
                         return
@@ -405,22 +459,36 @@ class ExtGwModeIntTestCase(test_db_plugin.NeutronDbPluginV2TestCase,
                     self.assertEqual(res_gw_info['network_id'], ext_net_id)
                     self.assertEqual(res_gw_info['enable_snat'],
                                      snat_expected_value)
+                    self.assertEqual(res_gw_info['enable_ipv6_nat'],
+                                     ipv6_nat_expected_value)
                 finally:
                     self._remove_external_gateway_from_router(
                         r['router']['id'], ext_net_id)
 
     def test_router_update_ext_gwinfo_default(self):
-        self._test_router_update_ext_gwinfo(None, True)
+        self._test_router_update_ext_gwinfo(None, True, None, False)
 
     def test_router_update_ext_gwinfo_with_snat_enabled(self):
-        self._test_router_update_ext_gwinfo(True, True)
+        self._test_router_update_ext_gwinfo(True, True, None, False)
 
     def test_router_update_ext_gwinfo_with_snat_disabled(self):
-        self._test_router_update_ext_gwinfo(False, False)
+        self._test_router_update_ext_gwinfo(False, False, None, False)
+
+    def test_router_update_ext_gwinfo_with_ipv6_nat_enabled(self):
+        self._test_router_update_ext_gwinfo(None, True, True, True)
+
+    def test_router_update_ext_gwinfo_with_ipv6_nat_disabled(self):
+        self._test_router_update_ext_gwinfo(None, True, False, False)
 
     def test_router_update_ext_gwinfo_with_invalid_snat_setting(self):
         self._test_router_update_ext_gwinfo(
-            'xxx', None, expected_http_code=exc.HTTPBadRequest.code)
+            'xxx', None, None, None,
+            expected_http_code=exc.HTTPBadRequest.code)
+
+    def test_router_update_ext_gwinfo_with_invalid_snat_ipv6_nat_setting(self):
+        self._test_router_update_ext_gwinfo(
+            False, False, True, True,
+            expected_http_code=exc.HTTPBadRequest.code)
 
 
 class ExtGwModeSepTestCase(ExtGwModeIntTestCase):

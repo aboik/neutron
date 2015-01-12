@@ -16,6 +16,7 @@
 import sqlalchemy as sa
 from sqlalchemy import sql
 
+from neutron.common import exceptions as n_exc
 from neutron.db import db_base_plugin_v2
 from neutron.db import l3_db
 from neutron.extensions import l3
@@ -25,9 +26,13 @@ from neutron.openstack.common import log as logging
 LOG = logging.getLogger(__name__)
 EXTERNAL_GW_INFO = l3.EXTERNAL_GW_INFO
 
-# Modify the Router Data Model adding the enable_snat attribute
+# Modify the Router Data Model adding the enable_snat and enable_ipv6_nat
+# attributes
 setattr(l3_db.Router, 'enable_snat',
         sa.Column(sa.Boolean, default=True, server_default=sql.true(),
+                  nullable=False))
+setattr(l3_db.Router, 'enable_ipv6_nat',
+        sa.Column(sa.Boolean, default=False, server_default=sql.false(),
                   nullable=False))
 
 
@@ -44,6 +49,7 @@ class L3_NAT_dbonly_mixin(l3_db.L3_NAT_dbonly_mixin):
             router_res[EXTERNAL_GW_INFO] = {
                 'network_id': nw_id,
                 'enable_snat': router_db.enable_snat,
+                'enable_ipv6_nat': router_db.enable_ipv6_nat,
                 'external_fixed_ips': [
                     {'subnet_id': ip["subnet_id"],
                      'ip_address': ip["ip_address"]}
@@ -55,11 +61,18 @@ class L3_NAT_dbonly_mixin(l3_db.L3_NAT_dbonly_mixin):
         # Load the router only if necessary
         if not router:
             router = self._get_router(context, router_id)
-        # if enable_snat is not specified use the value
-        # stored in the database (default:True)
+        # if enable_snat or enable_ipv6_nat is not specified use the value
+        # stored in the database (default:True for enable_snat, default:False
+        # for enable_ipv6_nat)
         enable_snat = not info or info.get('enable_snat', router.enable_snat)
+        enable_ipv6_nat = info.get('enable_ipv6_nat',
+                                   router.enable_ipv6_nat) if info else False
+        if enable_ipv6_nat and not enable_snat:
+            msg = _("SNAT must be enabled if IPv6 NAT is enabled")
+            raise n_exc.BadRequest(resource='router', msg=msg)
         with context.session.begin(subtransactions=True):
             router.enable_snat = enable_snat
+            router.enable_ipv6_nat = enable_ipv6_nat
 
         # Calls superclass, pass router db object for avoiding re-loading
         super(L3_NAT_dbonly_mixin, self)._update_router_gw_info(
@@ -74,8 +87,10 @@ class L3_NAT_dbonly_mixin(l3_db.L3_NAT_dbonly_mixin):
             # Collect gw ports only if available
             if gw_port_id and gw_ports.get(gw_port_id):
                 rtr['gw_port'] = gw_ports[gw_port_id]
-                # Add enable_snat key
+                # Add enable_snat and enable_ipv6_nat keys
                 rtr['enable_snat'] = rtr[EXTERNAL_GW_INFO]['enable_snat']
+                rtr['enable_ipv6_nat'] = \
+                    rtr[EXTERNAL_GW_INFO]['enable_ipv6_nat']
         return routers
 
 

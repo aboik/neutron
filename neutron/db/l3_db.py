@@ -90,6 +90,7 @@ class FloatingIP(model_base.BASEV2, models_v2.HasId, models_v2.HasTenant):
     """
 
     floating_ip_address = sa.Column(sa.String(64), nullable=False)
+    floating_ip_version = sa.Column(sa.Integer, nullable=False)
     floating_network_id = sa.Column(sa.String(36), nullable=False)
     floating_port_id = sa.Column(sa.String(36), sa.ForeignKey('ports.id'),
                                  nullable=False)
@@ -663,6 +664,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         res = {'id': floatingip['id'],
                'tenant_id': floatingip['tenant_id'],
                'floating_ip_address': floatingip['floating_ip_address'],
+               'floating_ip_version': floatingip['floating_ip_version'],
                'floating_network_id': floatingip['floating_network_id'],
                'router_id': floatingip['router_id'],
                'port_id': floatingip['fixed_port_id'],
@@ -847,13 +849,15 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
 
             floating_fixed_ip = external_port['fixed_ips'][0]
             floating_ip_address = floating_fixed_ip['ip_address']
+            floating_ip_version = fip.get('floating_ip_version')
             floatingip_db = FloatingIP(
                 id=fip_id,
                 tenant_id=tenant_id,
                 status=initial_status,
                 floating_network_id=fip['floating_network_id'],
                 floating_ip_address=floating_ip_address,
-                floating_port_id=external_port['id'])
+                floating_port_id=external_port['id'],
+                floating_ip_version=floating_ip_version)
             fip['tenant_id'] = tenant_id
             # Update association with internal port
             # and define external IP address

@@ -292,11 +292,14 @@ class Router(BASEV2, HasId, HasTenant):
     gw_port = orm.relationship(Port, lazy='joined')
     enable_snat = sa.Column(sa.Boolean, default=True,
                             server_default=sa.sql.true(), nullable=False)
+    enable_ipv6_nat = sa.Column(sa.Boolean, default=False,
+                                server_default=sa.sql.false(), nullable=False)
 
 
 #neutron/db/l3_db.py
 class FloatingIP(BASEV2, HasId, HasTenant):
     floating_ip_address = sa.Column(sa.String(64), nullable=False)
+    floating_ip_version = sa.Column(sa.Integer, nullable=False)
     floating_network_id = sa.Column(sa.String(36), nullable=False)
     floating_port_id = sa.Column(sa.String(36), sa.ForeignKey('ports.id'),
                                  nullable=False)

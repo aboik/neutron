@@ -190,6 +190,7 @@ class TestL3GwModeMixin(testlib_api.SqlTestCase,
         self.fip = l3_db.FloatingIP(
             id=_uuid(),
             floating_ip_address='1.1.1.2',
+            floating_ip_version='4',
             floating_network_id=self.ext_net_id,
             floating_port_id=FAKE_FIP_EXT_PORT_ID,
             fixed_port_id=None,

@@ -67,6 +67,7 @@
     "get_router": "rule:admin_or_owner",
     "get_router:distributed": "rule:admin_only",
     "update_router:external_gateway_info:enable_snat": "rule:admin_only",
+    "update_router:external_gateway_info:enable_ipv6_nat": "rule:admin_only",
     "update_router:distributed": "rule:admin_only",
     "update_router:ha": "rule:admin_only",
     "delete_router": "rule:admin_or_owner",

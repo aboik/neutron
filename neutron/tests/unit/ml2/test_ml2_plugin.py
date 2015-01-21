@@ -186,6 +186,7 @@ class TestMl2PortsV2(test_plugin.TestPortsV2, Ml2PluginV2TestCase):
                 l3plugin.create_floatingip(
                     context.get_admin_context(),
                     {'floatingip': {'floating_network_id': n['network']['id'],
+                                    'floating_ip_version': '4',
                                     'tenant_id': n['network']['tenant_id']}}
                 )
         self._delete('networks', n['network']['id'])

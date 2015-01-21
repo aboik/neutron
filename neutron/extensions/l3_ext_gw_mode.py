@@ -30,6 +30,8 @@ EXTENDED_ATTRIBUTES_2_0 = {
                   {'network_id': {'type:uuid': None, 'required': True},
                    'enable_snat': {'type:boolean': None, 'required': False,
                                    'convert_to': attrs.convert_to_boolean},
+                   'enable_ipv6_nat': {'type:boolean': None, 'required': False,
+                                       'convert_to': attrs.convert_to_boolean},
                    'external_fixed_ips': {
                        'convert_list_to': attrs.convert_kvp_list_to_dict,
                        'validate': {'type:fixed_ips': None},

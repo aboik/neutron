@@ -420,7 +420,7 @@ class L3NatTestCaseMixin(object):
 
     def _create_floatingip(self, fmt, network_id, port_id=None,
                            fixed_ip=None, set_context=False,
-                           floating_ip=None):
+                           floating_ip=None, floating_ip_version='4'):
         data = {'floatingip': {'floating_network_id': network_id,
                                'tenant_id': self._tenant_id}}
         if port_id:
@@ -431,6 +431,9 @@ class L3NatTestCaseMixin(object):
         if floating_ip:
             data['floatingip']['floating_ip_address'] = floating_ip
 
+        if floating_ip_version:
+            data['floatingip']['floating_ip_version'] = floating_ip_version
+
         floatingip_req = self.new_create_request('floatingips', data, fmt)
         if set_context and self._tenant_id:
             # create a specific auth context for this request
@@ -440,9 +443,11 @@ class L3NatTestCaseMixin(object):
 
     def _make_floatingip(self, fmt, network_id, port_id=None,
                          fixed_ip=None, set_context=False, floating_ip=None,
-                         http_status=exc.HTTPCreated.code):
+                         http_status=exc.HTTPCreated.code,
+                         floating_ip_version='4'):
         res = self._create_floatingip(fmt, network_id, port_id,
-                                      fixed_ip, set_context, floating_ip)
+                                      fixed_ip, set_context, floating_ip,
+                                      floating_ip_version)
         self.assertEqual(res.status_int, http_status)
         return self.deserialize(fmt, res)
 
@@ -2053,6 +2058,33 @@ class L3NatTestCaseBase(L3NatTestCaseMixin):
                                       http_status=exc.HTTPConflict.code)
             finally:
                 self._delete('floatingips', fp1['floatingip']['id'])
+
+    def test_create_floatingip_with_no_ip_version(self):
+
+        with self.subnet(cidr='10.0.0.0/24') as s:
+            network_id = s['subnet']['network_id']
+            self._set_net_external(network_id)
+            fp = self._make_floatingip(self.fmt, network_id)
+
+            try:
+                self.assertEqual('4', fp['floatingip']['floating_ip_version'])
+
+            finally:
+                self._delete('floatingips', fp['floatingip']['id'])
+
+    def test_create_floatingip_with_ip_version_v6(self):
+
+        with self.subnet(cidr='2001:db8::/64', ip_version='6') as s:
+            network_id = s['subnet']['network_id']
+            self._set_net_external(network_id)
+            fp = self._make_floatingip(self.fmt, network_id,
+                                       floating_ip_version='6')
+
+            try:
+                self.assertEqual('6', fp['floatingip']['floating_ip_version'])
+
+            finally:
+                self._delete('floatingips', fp['floatingip']['id'])
 
 
 class L3AgentDbTestCaseBase(L3NatTestCaseMixin):

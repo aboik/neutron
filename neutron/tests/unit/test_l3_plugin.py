@@ -2072,7 +2072,7 @@ class L3NatTestCaseBase(L3NatTestCaseMixin):
             finally:
                 self._delete('floatingips', fp['floatingip']['id'])
 
-    def test_create_floatingip_with_ip_version(self):
+    def test_create_floatingip_with_ip_version_v6(self):
 
         with self.subnet(cidr='2001:db8::/64', ip_version='6') as s:
             network_id = s['subnet']['network_id']

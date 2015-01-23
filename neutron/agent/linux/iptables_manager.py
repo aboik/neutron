@@ -269,13 +269,11 @@ class IptablesManager(object):
     FORWARD and OUTPUT chains. It's in both the ipv4 and ipv6 set of tables.
 
     For ipv4 and ipv6, the built-in INPUT, OUTPUT, and FORWARD filter chains
+    and the built-in PREROUTING, OUTPUT, and POSTROUTING nat chains
     are wrapped, meaning that the "real" INPUT chain has a rule that jumps to
     the wrapped INPUT chain, etc. Additionally, there's a wrapped chain named
-    "local" which is jumped to from neutron-filter-top.
-
-    For ipv4, the built-in PREROUTING, OUTPUT, and POSTROUTING nat chains are
-    wrapped in the same was as the built-in filter chains. Additionally,
-    there's a snat chain that is applied after the POSTROUTING chain.
+    "local" which is jumped to from neutron-filter-top and a snat chain that is
+    applied after the POSTROUTING chain.
 
     """
 
@@ -316,14 +314,18 @@ class IptablesManager(object):
                           6: {'filter': ['INPUT', 'OUTPUT', 'FORWARD']}}
 
         if not state_less:
-            self.ipv4.update(
-                {'nat': IptablesTable(binary_name=self.wrap_name)})
-            builtin_chains[4].update({'nat': ['PREROUTING',
-                                      'OUTPUT', 'POSTROUTING']})
-            self.ipv4.update(
-                {'raw': IptablesTable(binary_name=self.wrap_name)})
-            builtin_chains[4].update({'raw': ['PREROUTING',
-                                      'OUTPUT']})
+            for tables in [self.ipv4, self.ipv6]:
+                tables.update(
+                    {'nat': IptablesTable(binary_name=self.wrap_name),
+                     'mangle': IptablesTable(binary_name=self.wrap_name),
+                     'raw': IptablesTable(binary_name=self.wrap_name)})
+
+            for ip_version in builtin_chains:
+                builtin_chains[ip_version].update(
+                    {'nat': ['PREROUTING', 'OUTPUT', 'POSTROUTING'],
+                     'mangle': ['PREROUTING', 'INPUT', 'FORWARD', 'OUTPUT',
+                                'POSTROUTING'],
+                     'raw': ['PREROUTING', 'OUTPUT']})
 
         for ip_version in builtin_chains:
             if ip_version == 4:
@@ -338,26 +340,27 @@ class IptablesManager(object):
                                            (chain), wrap=False)
 
         if not state_less:
-            # Add a neutron-postrouting-bottom chain. It's intended to be
-            # shared among the various neutron components. We set it as the
-            # last chain of POSTROUTING chain.
-            self.ipv4['nat'].add_chain('neutron-postrouting-bottom',
-                                       wrap=False)
-            self.ipv4['nat'].add_rule('POSTROUTING',
-                                      '-j neutron-postrouting-bottom',
-                                      wrap=False)
+            for table in [self.ipv4['nat'], self.ipv6['nat']]:
+                # Add a neutron-postrouting-bottom chain. It's intended to be
+                # shared among the various neutron components. We set it as the
+                # last chain of POSTROUTING chain.
+                table.add_chain('neutron-postrouting-bottom',
+                                wrap=False)
+                table.add_rule('POSTROUTING',
+                               '-j neutron-postrouting-bottom',
+                               wrap=False)
 
-            # We add a snat chain to the shared neutron-postrouting-bottom
-            # chain so that it's applied last.
-            self.ipv4['nat'].add_chain('snat')
-            self.ipv4['nat'].add_rule('neutron-postrouting-bottom',
-                                      '-j $snat', wrap=False,
-                                      comment=ic.SNAT_OUT)
+                # We add a snat chain to the shared neutron-postrouting-bottom
+                # chain so that it's applied last.
+                table.add_chain('snat')
+                table.add_rule('neutron-postrouting-bottom',
+                               '-j $snat', wrap=False,
+                               comment=ic.SNAT_OUT)
 
-            # And then we add a float-snat chain and jump to first thing in
-            # the snat chain.
-            self.ipv4['nat'].add_chain('float-snat')
-            self.ipv4['nat'].add_rule('snat', '-j $float-snat')
+                # And then we add a float-snat chain and jump to first thing in
+                # the snat chain.
+                table.add_chain('float-snat')
+                table.add_rule('snat', '-j $float-snat')
 
     def get_chain(self, table, chain, ip_version=4, wrap=True):
         try:

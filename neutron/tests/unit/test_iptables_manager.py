@@ -232,14 +232,15 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         self.assertEqual(iptables_manager.get_chain_name(name, wrap=True),
                          name[:11])
 
-    def _extend_with_ip6tables_filter(self, expected_calls, filter_dump):
+    def _extend_with_ip6tables_filter(self, expected_calls, filter_dump,
+                                      nat_dump, raw_dump):
         expected_calls.insert(2, (
             mock.call(['ip6tables-save', '-c'],
                       root_helper=self.root_helper),
             ''))
         expected_calls.insert(3, (
             mock.call(['ip6tables-restore', '-c'],
-                      process_input=filter_dump,
+                      process_input=raw_dump + nat_dump + filter_dump,
                       root_helper=self.root_helper),
             None))
         expected_calls.extend([
@@ -247,7 +248,7 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
                       root_helper=self.root_helper),
              ''),
             (mock.call(['ip6tables-restore', '-c'],
-                      process_input=filter_dump,
+                      process_input=raw_dump + nat_dump + filter_dump,
                       root_helper=self.root_helper),
              None)])
 
@@ -290,7 +291,8 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         ]
         if use_ipv6:
             self._extend_with_ip6tables_filter(expected_calls_and_values,
-                                               filter_dump_ipv6)
+                                               filter_dump_ipv6, nat_dump,
+                                               raw_dump)
 
         tools.setup_mock_calls(self.execute, expected_calls_and_values)
 
@@ -348,7 +350,8 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         ]
         if use_ipv6:
             self._extend_with_ip6tables_filter(expected_calls_and_values,
-                                               filter_dump)
+                                               filter_dump, nat_dump,
+                                               raw_dump)
 
         tools.setup_mock_calls(self.execute, expected_calls_and_values)
 
@@ -394,7 +397,8 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         ]
         if use_ipv6:
             self._extend_with_ip6tables_filter(expected_calls_and_values,
-                                               FILTER_DUMP)
+                                               FILTER_DUMP, NAT_DUMP,
+                                               RAW_DUMP)
 
         tools.setup_mock_calls(self.execute, expected_calls_and_values)
 
@@ -445,7 +449,8 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         ]
         if use_ipv6:
             self._extend_with_ip6tables_filter(expected_calls_and_values,
-                                               FILTER_DUMP)
+                                               FILTER_DUMP, NAT_DUMP,
+                                               RAW_DUMP)
 
         tools.setup_mock_calls(self.execute, expected_calls_and_values)
 
@@ -524,7 +529,8 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         ]
         if use_ipv6:
             self._extend_with_ip6tables_filter(expected_calls_and_values,
-                                               FILTER_DUMP)
+                                               FILTER_DUMP, NAT_DUMP,
+                                               RAW_DUMP)
 
         tools.setup_mock_calls(self.execute, expected_calls_and_values)
 
@@ -598,7 +604,8 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         ]
         if use_ipv6:
             self._extend_with_ip6tables_filter(expected_calls_and_values,
-                                               FILTER_DUMP)
+                                               FILTER_DUMP, nat_dump,
+                                               RAW_DUMP)
 
         tools.setup_mock_calls(self.execute, expected_calls_and_values)
 
@@ -666,7 +673,8 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
         ]
         if use_ipv6:
             self._extend_with_ip6tables_filter(expected_calls_and_values,
-                                               FILTER_DUMP)
+                                               FILTER_DUMP, NAT_DUMP,
+                                               RAW_DUMP)
 
         tools.setup_mock_calls(self.execute, expected_calls_and_values)
 
@@ -805,11 +813,19 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
              ''),
         ]
         if use_ipv6:
-            expected_calls_and_values.append(
-                (mock.call(['ip6tables', '-t', 'filter', '-L', 'OUTPUT',
+            expected_calls_and_values.extend(
+                [(mock.call(['ip6tables', '-t', 'filter', '-L', 'OUTPUT',
                            '-n', '-v', '-x'],
                            root_helper=self.root_helper),
-                 TRAFFIC_COUNTERS_DUMP))
+                 TRAFFIC_COUNTERS_DUMP),
+                 (mock.call(['ip6tables', '-t', 'raw', '-L', 'OUTPUT', '-n',
+                             '-v', '-x'],
+                            root_helper=self.root_helper),
+                  ''),
+                 (mock.call(['ip6tables', '-t', 'nat', '-L', 'OUTPUT', '-n',
+                             '-v', '-x'],
+                            root_helper=self.root_helper),
+                  '')])
             exp_packets *= 2
             exp_bytes *= 2
 
@@ -848,14 +864,21 @@ class IptablesManagerStateFulTestCase(base.BaseTestCase):
             (mock.call(['iptables', '-t', 'nat', '-L', 'OUTPUT', '-n',
                         '-v', '-x', '-Z'],
                        root_helper=self.root_helper),
-             '')
-        ]
+             '')]
         if use_ipv6:
-            expected_calls_and_values.append(
-                (mock.call(['ip6tables', '-t', 'filter', '-L', 'OUTPUT',
+            expected_calls_and_values.extend(
+                [(mock.call(['ip6tables', '-t', 'filter', '-L', 'OUTPUT',
                             '-n', '-v', '-x', '-Z'],
                            root_helper=self.root_helper),
-                 TRAFFIC_COUNTERS_DUMP))
+                 TRAFFIC_COUNTERS_DUMP),
+                (mock.call(['ip6tables', '-t', 'raw', '-L', 'OUTPUT', '-n',
+                            '-v', '-x', '-Z'],
+                           root_helper=self.root_helper),
+                 ''),
+                (mock.call(['ip6tables', '-t', 'nat', '-L', 'OUTPUT', '-n',
+                            '-v', '-x', '-Z'],
+                           root_helper=self.root_helper),
+                 '')])
             exp_packets *= 2
             exp_bytes *= 2
 

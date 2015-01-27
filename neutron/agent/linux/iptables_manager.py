@@ -317,14 +317,11 @@ class IptablesManager(object):
             for tables in [self.ipv4, self.ipv6]:
                 tables.update(
                     {'nat': IptablesTable(binary_name=self.wrap_name),
-                     'mangle': IptablesTable(binary_name=self.wrap_name),
                      'raw': IptablesTable(binary_name=self.wrap_name)})
 
             for ip_version in builtin_chains:
                 builtin_chains[ip_version].update(
                     {'nat': ['PREROUTING', 'OUTPUT', 'POSTROUTING'],
-                     'mangle': ['PREROUTING', 'INPUT', 'FORWARD', 'OUTPUT',
-                                'POSTROUTING'],
                      'raw': ['PREROUTING', 'OUTPUT']})
 
         for ip_version in builtin_chains:

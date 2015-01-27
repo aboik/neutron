@@ -2639,7 +2639,7 @@ class TestSecurityGroupAgentWithIptables(base.BaseTestCase):
             return_value='')
         self._register_mock_call(
             ['ip6tables-restore', '-c'],
-            process_input=self._regex(v6_filter),
+            process_input=self._regex(IPTABLES_RAW + IPTABLES_NAT + v6_filter),
             root_helper=self.root_helper,
             return_value='')
 

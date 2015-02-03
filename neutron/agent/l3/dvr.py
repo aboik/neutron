@@ -256,16 +256,20 @@ class AgentMixin(object):
 
     def _snat_redirect_remove(self, ri, sn_port, sn_int):
         """Removes rules and routes for SNAT redirection."""
-        try:
-            ip_cidr = sn_port['ip_cidr']
-            snat_idx = self._get_snat_idx(ip_cidr)
-            ns_ipr = ip_lib.IpRule(self.root_helper, namespace=ri.ns_name)
-            ns_ipd = ip_lib.IPDevice(sn_int, self.root_helper,
-                                     namespace=ri.ns_name)
-            ns_ipd.route.delete_gateway(table=snat_idx)
-            ns_ipr.delete(ip_cidr, snat_idx, snat_idx)
-        except Exception:
-            LOG.exception(_LE('DVR: removed snat failed'))
+        for fixed_ip in sn_port['fixed_ips']:
+            try:
+                ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
+                                     fixed_ip['prefixlen'])
+                ip_version = netaddr.IPNetwork(ip_cidr).version
+                snat_idx = self._get_snat_idx(ip_cidr)
+                ns_ipr = ip_lib.IpRule(self.root_helper, namespace=ri.ns_name)
+                ns_ipd = ip_lib.IPDevice(sn_int, self.root_helper,
+                                         namespace=ri.ns_name)
+                ns_ipd.route.delete_gateway(table=snat_idx,
+                                            ip_version=ip_version)
+                ns_ipr.delete(ip_cidr, snat_idx, snat_idx)
+            except Exception:
+                LOG.exception(_LE('DVR: removed snat failed'))
 
     def _update_arp_entry(self, ri, ip, mac, subnet_id, operation):
         """Add or delete arp entry into router namespace for the subnet."""

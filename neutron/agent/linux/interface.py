@@ -80,7 +80,7 @@ class LinuxInterfaceDriver(object):
         self.root_helper = config.get_root_helper(conf)
 
     def init_l3(self, device_name, ip_addrs, namespace=None,
-                preserve_ips=[], extra_subnets=[], ext_gateway_port=False):
+                preserve_ips=[], extra_subnets=[]):
         """Set the L3 settings for the interface using data from the port.
 
         ip_addrs: list of ip address dictionaries, each entry containing:
@@ -100,7 +100,17 @@ class LinuxInterfaceDriver(object):
         # add new addresses
         for ip_addr in ip_addrs:
 
-            ip_cidr = ip_addr['cidr']
+            # TODO(leblancd): The neutron-lbaas services code needs to
+            # be changed to call init_l3 with an ip_addr dictionary
+            # rather than a list of IP CIDRs. Until this change is made,
+            # keep this code resilient to calls made with a list of IP
+            # CIDRs.
+            lbaas_workaround = False
+            try:
+                ip_cidr = ip_addr['cidr']
+            except TypeError:
+                ip_cidr = ip_addr
+                lbaas_workaround = True
             net = netaddr.IPNetwork(ip_cidr)
             # Convert to compact IPv6 address because the return values of
             # "ip addr list" are compact.
@@ -113,22 +123,15 @@ class LinuxInterfaceDriver(object):
             device.addr.add(net.version, ip_cidr, str(net.broadcast))
 
             # Add gateway IP address for this address family
-            gateway_ip = ip_addr.get('gateway_ip')
-            if gateway_ip:
-                device.route.add_gateway(net.version, gateway_ip)
+            if not lbaas_workaround:
+                gateway_ip = ip_addr.get('gateway_ip')
+                if gateway_ip:
+                    device.route.add_gateway(gateway_ip)
 
             if net.version == 6:
-                # Enable IPv6 routing on this interface
-                self._ipv6_enable_forwarding(self.root_helper, namespace,
-                                             device_name)
-                if gateway_ip or not ext_gateway_port:
-                    # Gateway IP is set, no need to learn it from RAs
-                    self._ipv6_disable_ra_defrtr(self.root_helper, namespace,
-                                                 device_name)
-                else:
-                    # Assume RA from upstream router
-                    self._ipv6_enable_ra_defrtr(self.root_helper, namespace,
-                                                device_name)
+                # Enable IPv6 routing and configure for RAs on this interface
+                self._enable_ipv6_forwarding(self.root_helper, namespace,
+                                             device_name, gateway_ip)
 
         # clean up any old addresses
         for ip_cidr, ip_version in previous.items():
@@ -189,24 +192,26 @@ class LinuxInterfaceDriver(object):
     def get_device_name(self, port):
         return (self.DEV_NAME_PREFIX + port.id)[:self.DEV_NAME_LEN]
 
-    def _exec_sysctl_cmd(self, root_helper, namespace, ctl_str):
-        cmd = ['sysctl', ctl_str]
-        ip_wrapper = ip_lib.IPWrapper(root_helper, namespace)
-        ip_wrapper.netns.execute(cmd, check_exit_code=False)
-
-    def _ipv6_enable_forwarding(self, root_helper, namespace, device_name):
-        ctl_str = 'net.ipv6.conf.%s.forwarding=1' % device_name
-        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
-
-    def _ipv6_enable_ra_defrtr(self, root_helper, namespace, device_name):
-        ctl_str = 'net.ipv6.conf.%s.accept_ra=2' % device_name
-        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
-        ctl_str = 'net.ipv6.conf.%s.accept_ra_defrtr=1' % device_name
-        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
-
-    def _ipv6_disable_ra_defrtr(self, root_helper, namespace, device_name):
-        ctl_str = 'net.ipv6.conf.%s.accept_ra_defrtr=0' % device_name
-        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
+    def _enable_ipv6_forwarding(self, root_helper, namespace, dev_name,
+                                gateway_ip):
+        """Enable IPv6 forwarding and config acceptance of RAs on an intf."""
+        ctl_strs = ['net.ipv6.conf.%s.forwarding=1' % dev_name]
+        if gateway_ip:
+            # Gateway IP is set, no need to learn it from RAs
+            ctl_strs += ['net.ipv6.conf.%s.accept_ra_defrtr=0' % dev_name]
+        else:
+            # Learn the default router's IP address via RAs
+            ctl_strs += ['net.ipv6.conf.%s.accept_ra=2' % dev_name]
+            ctl_strs += ['net.ipv6.conf.%s.accept_ra_defrtr=1' % dev_name]
+        ip_wrapper = ip_lib.IPWrapper(root_helper, namespace=namespace)
+        for ctl_str in ctl_strs:
+            cmd = ['sysctl', ctl_str]
+            try:
+                ip_wrapper.netns.execute(cmd, check_exit_code=True)
+            except RuntimeError:
+                LOG.exception(_LE("'sysctl %(ctl_str)s' failed in "
+                                  "namespace %(ns)s"),
+                              {'ctl_str': ctl_str, 'ns': namespace})
 
     @abc.abstractmethod
     def plug(self, network_id, port_id, device_name, mac_address,

@@ -121,7 +121,7 @@ class TestABCDriver(TestBase):
              mock.call().addr.add(4, '192.168.1.2/24', '192.168.1.255')])
         self.assertFalse(self.ip_dev().addr.delete.called)
 
-    def test_l3_init_with_ipv6(self):
+    def _test_l3_init_with_ipv6(self, include_gw_ip=False):
         addresses = [dict(ip_version=6,
                           scope='global',
                           dynamic=False,
@@ -129,13 +129,71 @@ class TestABCDriver(TestBase):
         self.ip_dev().addr.list = mock.Mock(return_value=addresses)
         bc = BaseChild(self.conf)
         ns = '12345678-1234-5678-90ab-ba0987654321'
-        bc.init_l3('tap0', [{'cidr': '2001:db8:a::124/64'}], namespace=ns)
-        self.ip_dev.assert_has_calls(
+        new_addr = {'cidr': '2001:db8:a::124/64'}
+        if include_gw_ip:
+            new_addr['gateway_ip'] = '2001:db8:a::1'
+        bc.init_l3('tap0', [new_addr], namespace=ns)
+        expected_calls = (
             [mock.call('tap0', 'sudo', namespace=ns),
              mock.call().addr.list(scope='global', filters=['permanent']),
              mock.call().addr.add(6, '2001:db8:a::124/64',
+                                  '2001:db8:a:0:ffff:ffff:ffff:ffff')])
+        if include_gw_ip:
+            expected_calls += (
+                [mock.call().route.add_gateway('2001:db8:a::1')])
+        expected_calls += [mock.call().addr.delete(6, '2001:db8:a::123/64')]
+        self.ip_dev.assert_has_calls(expected_calls)
+        v6_sysctl_strs = ['net.ipv6.conf.tap0.forwarding=1']
+        if include_gw_ip:
+            v6_sysctl_strs += ['net.ipv6.conf.tap0.accept_ra_defrtr=0']
+        else:
+            v6_sysctl_strs += ['net.ipv6.conf.tap0.accept_ra=2',
+                               'net.ipv6.conf.tap0.accept_ra_defrtr=1']
+        self.ip.assert_has_calls(
+            [mock.call('sudo', namespace=ns)] +
+            [mock.call().netns.execute(['sysctl', ctl_str],
+                                       check_exit_code=True)
+             for ctl_str in v6_sysctl_strs])
+
+    def test_l3_init_with_ipv6_with_gw_ip(self):
+        self._test_l3_init_with_ipv6(include_gw_ip=True)
+
+    def test_l3_init_with_ipv6_without_gw_ip(self):
+        self._test_l3_init_with_ipv6(include_gw_ip=False)
+
+    def test_l3_init_with_dual_stack(self):
+        old_addrs = [dict(ip_version=4, scope='global',
+                          dynamic=False, cidr='172.16.77.240/24'),
+                     dict(ip_version=6, scope='global',
+                          dynamic=False, cidr='2001:db8:a::123/64')]
+        self.ip_dev().addr.list = mock.Mock(return_value=old_addrs)
+        self.ip_dev().route.list_onlink_routes.return_value = []
+        bc = BaseChild(self.conf)
+        ns = '12345678-1234-5678-90ab-ba0987654321'
+        new_addrs = [dict(ip_version=4, scope='global',
+                          dynamic=False, cidr='192.168.1.2/24'),
+                     dict(ip_version=6, scope='global',
+                          dynamic=False, cidr='2001:db8:a::124/64')]
+        bc.init_l3('tap0', new_addrs, namespace=ns,
+                   extra_subnets=[{'cidr': '172.20.0.0/24'}])
+        self.ip_dev.assert_has_calls(
+            [mock.call('tap0', 'sudo', namespace=ns),
+             mock.call().addr.list(scope='global', filters=['permanent']),
+             mock.call().addr.add(4, '192.168.1.2/24', '192.168.1.255'),
+             mock.call().addr.add(6, '2001:db8:a::124/64',
                                   '2001:db8:a:0:ffff:ffff:ffff:ffff'),
-             mock.call().addr.delete(6, '2001:db8:a::123/64')])
+             mock.call().addr.delete(4, '172.16.77.240/24'),
+             mock.call().addr.delete(6, '2001:db8:a::123/64'),
+             mock.call().route.list_onlink_routes(),
+             mock.call().route.add_onlink_route('172.20.0.0/24')])
+        v6_sysctl_strs = ['net.ipv6.conf.tap0.forwarding=1',
+                          'net.ipv6.conf.tap0.accept_ra=2',
+                          'net.ipv6.conf.tap0.accept_ra_defrtr=1']
+        self.ip.assert_has_calls(
+            [mock.call('sudo', namespace=ns)] +
+            [mock.call().netns.execute(['sysctl', ctl_str],
+                                       check_exit_code=True)
+             for ctl_str in v6_sysctl_strs])
 
     def test_l3_init_with_duplicated_ipv6(self):
         addresses = [dict(ip_version=6,

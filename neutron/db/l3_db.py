@@ -1103,7 +1103,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         filters = {'id': gw_port_ids}
         gw_ports = self._core_plugin.get_ports(context, filters)
         if gw_ports:
-            self._populate_subnet_for_ports(context, gw_ports)
+            self._populate_subnets_for_ports(context, gw_ports)
         return gw_ports
 
     def get_sync_interfaces(self, context, router_ids, device_owners=None):
@@ -1122,11 +1122,11 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         ports = [rp.port.id for rp in qry]
         interfaces = self._core_plugin.get_ports(context, {'id': ports})
         if interfaces:
-            self._populate_subnet_for_ports(context, interfaces)
+            self._populate_subnets_for_ports(context, interfaces)
         return interfaces
 
-    def _populate_subnet_for_ports(self, context, ports):
-        """Populate ports with subnet.
+    def _populate_subnets_for_ports(self, context, ports):
+        """Populate ports with subnets.
 
         These ports already have fixed_ips populated.
         """
@@ -1135,6 +1135,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
 
         def each_port_with_ip():
             for port in ports:
+                dev_owner = port.get('device_owner')
                 fixed_ips = port.get('fixed_ips', [])
                 if not fixed_ips:
                     # Skip ports without IPs, which can occur if a subnet

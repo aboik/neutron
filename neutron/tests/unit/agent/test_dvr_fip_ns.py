@@ -76,6 +76,7 @@ class TestDvrFipNs(base.BaseTestCase):
                                         'prefixlen': 24,
                                         'subnet_id': subnet_id}],
                          'subnets': [{'id': subnet_id,
+                                      'cidr': '20.0.0.0/24',
                                       'gateway_ip': '20.0.0.1'}],
                          'id': _uuid(),
                          'network_id': self.net_id,

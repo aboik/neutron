@@ -140,13 +140,18 @@ class HaRouter(router.RouterInfo):
     def get_ha_device_name(self, port_id):
         return (HA_DEV_PREFIX + port_id)[:self.driver.DEV_NAME_LEN]
 
-    def ha_network_added(self, network_id, port_id, internal_cidr,
+    def ha_network_added(self, network_id, port_id, fixed_ips,
                          mac_address):
         interface_name = self.get_ha_device_name(port_id)
         self.driver.plug(network_id, port_id, interface_name, mac_address,
                          namespace=self.ns_name,
                          prefix=HA_DEV_PREFIX)
-        self.driver.init_l3(interface_name, [{'cidr': internal_cidr}],
+        ip_cidrs = []
+        for fixed_ip in fixed_ips:
+            ip_cidr = '%s/%s' % (fixed_ip['ip_address'],
+                                 fixed_ip['prefixlen'])
+            ip_cidrs.append({'cidr': ip_cidr})
+        self.driver.init_l3(interface_name, ip_cidrs,
                             namespace=self.ns_name)
 
     def ha_network_removed(self):
@@ -240,10 +245,15 @@ class HaRouter(router.RouterInfo):
         self._add_vip(ipv6_lladdr, interface_name, scope='link')
 
     def _ha_external_gateway_added(self, ex_gw_port, interface_name):
-        self._add_vip(ex_gw_port['ip_cidr'], interface_name)
+        for fixed_ip in ex_gw_port['fixed_ips']:
+            ip_cidr = '%s/%s' % (fixed_ip['ip_address'],
+                                 fixed_ip['prefixlen'])
+            self._add_vip(ip_cidr, interface_name)
         self._add_default_gw_virtual_route(ex_gw_port, interface_name)
 
     def _ha_external_gateway_updated(self, ex_gw_port, interface_name):
-        old_gateway_cidr = self.ex_gw_port['ip_cidr']
-        self._remove_vip(old_gateway_cidr)
+        for fixed_ip in ex_gw_port['fixed_ips']:
+            old_ip_cidr = '%s/%s' % (fixed_ip['ip_address'],
+                                     fixed_ip['prefixlen'])
+            self._remove_vip(old_ip_cidr)
         self._ha_external_gateway_added(ex_gw_port, interface_name)

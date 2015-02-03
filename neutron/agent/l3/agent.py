@@ -723,7 +723,6 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
                 if 'subnets' not in agent_gateway_port:
                     LOG.error(_LE('Missing subnet/agent_gateway_port'))
                 else:
-                    self._set_subnet_info(agent_gateway_port)
                     ri.fip_ns.create_gateway_port(agent_gateway_port)
 
         if ri.fip_ns.agent_gateway_port and floating_ips:

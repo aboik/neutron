@@ -1193,12 +1193,13 @@ class TestDeviceManager(base.BaseTestCase):
                           [{'subnet_id': fake_fixed_ip1.subnet_id}],
                           'device_id': mock.ANY}})])
 
-        expected_ips = ['172.9.9.9/24', '169.254.169.254/16']
+        expected_cidrs = [{'cidr': '172.9.9.9/24'},
+                          {'cidr': '169.254.169.254/16'}]
         expected = [
             mock.call.get_device_name(port),
             mock.call.init_l3(
                 'tap12345678-12',
-                expected_ips,
+                expected_cidrs,
                 namespace=net.namespace)]
 
         if not device_is_ready:
@@ -1403,7 +1404,7 @@ class TestDeviceManager(base.BaseTestCase):
 
         self.assertEqual(device.route.get_gateway.call_count, 1)
         self.assertFalse(device.route.delete_gateway.called)
-        device.route.add_gateway.assert_called_once_with('192.168.0.1')
+        device.route.add_gateway.assert_called_once_with(4, '192.168.0.1')
 
     def test_set_default_route_no_subnet(self):
         dh = dhcp.DeviceManager(cfg.CONF, cfg.CONF.root_helper, None)
@@ -1471,7 +1472,7 @@ class TestDeviceManager(base.BaseTestCase):
 
         self.assertEqual(device.route.get_gateway.call_count, 1)
         self.assertFalse(device.route.delete_gateway.called)
-        device.route.add_gateway.assert_called_once_with('192.168.0.1')
+        device.route.add_gateway.assert_called_once_with(4, '192.168.0.1')
 
     def test_set_default_route_two_subnets(self):
         # Try two subnets. Should set gateway from the first.
@@ -1488,7 +1489,7 @@ class TestDeviceManager(base.BaseTestCase):
 
         self.assertEqual(device.route.get_gateway.call_count, 1)
         self.assertFalse(device.route.delete_gateway.called)
-        device.route.add_gateway.assert_called_once_with('192.168.1.1')
+        device.route.add_gateway.assert_called_once_with(4, '192.168.1.1')
 
 
 class TestDictModel(base.BaseTestCase):

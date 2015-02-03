@@ -79,11 +79,13 @@ class LinuxInterfaceDriver(object):
         self.conf = conf
         self.root_helper = config.get_root_helper(conf)
 
-    def init_l3(self, device_name, ip_cidrs, namespace=None,
-                preserve_ips=[], gateway=None, extra_subnets=[]):
+    def init_l3(self, device_name, ip_addrs, namespace=None,
+                preserve_ips=[], extra_subnets=[]):
         """Set the L3 settings for the interface using data from the port.
 
-        ip_cidrs: list of 'X.X.X.X/YY' strings
+        ip_addrs: list of ip address dictionaries, each entry containing:
+            'cidr': cidr for ip that should be assigned to device
+            'gateway_ip': (optional) associated external gateway ip address
         preserve_ips: list of ip cidrs that should not be removed from device
         """
         device = ip_lib.IPDevice(device_name,
@@ -95,8 +97,9 @@ class LinuxInterfaceDriver(object):
             previous[address['cidr']] = address['ip_version']
 
         # add new addresses
-        for ip_cidr in ip_cidrs:
+        for ip_addr in ip_addrs:
 
+            ip_cidr = ip_addr['cidr']
             net = netaddr.IPNetwork(ip_cidr)
             # Convert to compact IPv6 address because the return values of
             # "ip addr list" are compact.
@@ -108,6 +111,24 @@ class LinuxInterfaceDriver(object):
 
             device.addr.add(net.version, ip_cidr, str(net.broadcast))
 
+            # Add gateway IP address for this address family
+            gateway_ip = ip_addr.get('gateway_ip')
+            if gateway_ip:
+                device.route.add_gateway(net.version, gateway_ip)
+
+            if net.version == 6:
+                # Enable IPv6 routing on this interface
+                self._ipv6_enable_forwarding(self.root_helper, namespace,
+                                             device_name)
+                if gateway_ip:
+                    # Gateway IP is set, no need to learn it from RAs
+                    self._ipv6_disable_ra_defrtr(self.root_helper, namespace,
+                                                 device_name)
+                else:
+                    # Assume RA from upstream router
+                    self._ipv6_enable_ra_defrtr(self.root_helper, namespace,
+                                                device_name)
+
         # clean up any old addresses
         for ip_cidr, ip_version in previous.items():
             if ip_cidr not in preserve_ips:
@@ -115,9 +136,6 @@ class LinuxInterfaceDriver(object):
                 self.delete_conntrack_state(root_helper=self.root_helper,
                                             namespace=namespace,
                                             ip=ip_cidr)
-
-        if gateway:
-            device.route.add_gateway(gateway)
 
         new_onlink_routes = set(s['cidr'] for s in extra_subnets)
         existing_onlink_routes = set(device.route.list_onlink_routes())
@@ -169,6 +187,25 @@ class LinuxInterfaceDriver(object):
 
     def get_device_name(self, port):
         return (self.DEV_NAME_PREFIX + port.id)[:self.DEV_NAME_LEN]
+
+    def _exec_sysctl_cmd(self, root_helper, namespace, ctl_str):
+        cmd = ['sysctl', ctl_str]
+        ip_wrapper = ip_lib.IPWrapper(root_helper, namespace)
+        ip_wrapper.netns.execute(cmd, check_exit_code=False)
+
+    def _ipv6_enable_forwarding(self, root_helper, namespace, device_name):
+        ctl_str = 'net.ipv6.conf.%s.forwarding=1' % device_name
+        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
+
+    def _ipv6_enable_ra_defrtr(self, root_helper, namespace, device_name):
+        ctl_str = 'net.ipv6.conf.%s.accept_ra=2' % device_name
+        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
+        ctl_str = 'net.ipv6.conf.%s.accept_ra_defrtr=1' % device_name
+        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
+
+    def _ipv6_disable_ra_defrtr(self, root_helper, namespace, device_name):
+        ctl_str = 'net.ipv6.conf.%s.accept_ra_defrtr=0' % device_name
+        self._exec_sysctl_cmd(root_helper, namespace, ctl_str)
 
     @abc.abstractmethod
     def plug(self, network_id, port_id, device_name, mac_address,

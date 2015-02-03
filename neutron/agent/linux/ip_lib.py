@@ -396,23 +396,23 @@ class IpAddrCommand(IpDeviceCommandBase):
 class IpRouteCommand(IpDeviceCommandBase):
     COMMAND = 'route'
 
-    def add_gateway(self, gateway, metric=None, table=None):
+    def add_gateway(self, ip_version, gateway, metric=None, table=None):
         args = ['replace', 'default', 'via', gateway]
         if metric:
             args += ['metric', metric]
         args += ['dev', self.name]
         if table:
             args += ['table', table]
-        self._as_root(*args)
+        self._as_root(*args, options=[ip_version])
 
-    def delete_gateway(self, gateway=None, table=None):
+    def delete_gateway(self, ip_version, gateway=None, table=None):
         args = ['del', 'default']
         if gateway:
             args += ['via', gateway]
         args += ['dev', self.name]
         if table:
             args += ['table', table]
-        self._as_root(*args)
+        self._as_root(*args, options=[ip_version])
 
     def list_onlink_routes(self):
         def iterate_routes():

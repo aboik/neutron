@@ -83,7 +83,7 @@ class TestABCDriver(TestBase):
 
         bc = BaseChild(self.conf)
         ns = '12345678-1234-5678-90ab-ba0987654321'
-        bc.init_l3('tap0', ['192.168.1.2/24'], namespace=ns,
+        bc.init_l3('tap0', [{'cidr': '192.168.1.2/24'}], namespace=ns,
                    extra_subnets=[{'cidr': '172.20.0.0/24'}])
         self.ip_dev.assert_has_calls(
             [mock.call('tap0', 'sudo', namespace=ns),
@@ -101,7 +101,7 @@ class TestABCDriver(TestBase):
 
         bc = BaseChild(self.conf)
         ns = '12345678-1234-5678-90ab-ba0987654321'
-        bc.init_l3('tap0', ['192.168.1.2/24'], namespace=ns)
+        bc.init_l3('tap0', [{'cidr': '192.168.1.2/24'}], namespace=ns)
         self.ip_dev.assert_has_calls(
             [mock.call().route.list_onlink_routes(),
              mock.call().route.delete_onlink_route('172.20.0.0/24')])
@@ -113,7 +113,7 @@ class TestABCDriver(TestBase):
 
         bc = BaseChild(self.conf)
         ns = '12345678-1234-5678-90ab-ba0987654321'
-        bc.init_l3('tap0', ['192.168.1.2/24'], namespace=ns,
+        bc.init_l3('tap0', [{'cidr': '192.168.1.2/24'}], namespace=ns,
                    preserve_ips=['192.168.1.3/32'])
         self.ip_dev.assert_has_calls(
             [mock.call('tap0', 'sudo', namespace=ns),
@@ -129,7 +129,7 @@ class TestABCDriver(TestBase):
         self.ip_dev().addr.list = mock.Mock(return_value=addresses)
         bc = BaseChild(self.conf)
         ns = '12345678-1234-5678-90ab-ba0987654321'
-        bc.init_l3('tap0', ['2001:db8:a::124/64'], namespace=ns)
+        bc.init_l3('tap0', [{'cidr': '2001:db8:a::124/64'}], namespace=ns)
         self.ip_dev.assert_has_calls(
             [mock.call('tap0', 'sudo', namespace=ns),
              mock.call().addr.list(scope='global', filters=['permanent']),
@@ -145,7 +145,7 @@ class TestABCDriver(TestBase):
         self.ip_dev().addr.list = mock.Mock(return_value=addresses)
         bc = BaseChild(self.conf)
         ns = '12345678-1234-5678-90ab-ba0987654321'
-        bc.init_l3('tap0', ['2001:db8:a::123/64'], namespace=ns)
+        bc.init_l3('tap0', [{'cidr': '2001:db8:a::123/64'}], namespace=ns)
         self.assertFalse(self.ip_dev().addr.add.called)
 
     def test_l3_init_with_duplicated_ipv6_uncompact(self):
@@ -157,7 +157,7 @@ class TestABCDriver(TestBase):
         bc = BaseChild(self.conf)
         ns = '12345678-1234-5678-90ab-ba0987654321'
         bc.init_l3('tap0',
-                   ['2001:db8:a:0000:0000:0000:0000:0123/64'],
+                   [{'cidr': '2001:db8:a:0000:0000:0000:0000:0123/64'}],
                    namespace=ns)
         self.assertFalse(self.ip_dev().addr.add.called)
 

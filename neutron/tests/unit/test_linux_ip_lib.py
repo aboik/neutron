@@ -730,20 +730,22 @@ class TestIpRouteCommand(TestIPCmdBase):
         self.route_cmd = ip_lib.IpRouteCommand(self.parent)
 
     def test_add_gateway(self):
+        ip_version = 4
         gateway = '192.168.45.100'
         metric = 100
         table = 14
-        self.route_cmd.add_gateway(gateway, metric, table)
-        self._assert_sudo([],
+        self.route_cmd.add_gateway(ip_version, gateway, metric, table)
+        self._assert_sudo([4],
                           ('replace', 'default', 'via', gateway,
                            'metric', metric,
                            'dev', self.parent.name, 'table', table))
 
     def test_del_gateway(self):
+        ip_version = 4
         gateway = '192.168.45.100'
         table = 14
-        self.route_cmd.delete_gateway(gateway, table)
-        self._assert_sudo([],
+        self.route_cmd.delete_gateway(ip_version, gateway, table)
+        self._assert_sudo([4],
                           ('del', 'default', 'via', gateway,
                            'dev', self.parent.name, 'table', table))
 

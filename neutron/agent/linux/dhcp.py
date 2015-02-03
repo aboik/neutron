@@ -843,7 +843,7 @@ class DeviceManager(object):
                           '%(ip)s',
                           {'n': network.id, 'ip': subnet.gateway_ip})
 
-                device.route.add_gateway(subnet.gateway_ip)
+                device.route.add_gateway(subnet.ip_version, subnet.gateway_ip)
 
             return
 
@@ -954,11 +954,11 @@ class DeviceManager(object):
             subnet = fixed_ip.subnet
             net = netaddr.IPNetwork(subnet.cidr)
             ip_cidr = '%s/%s' % (fixed_ip.ip_address, net.prefixlen)
-            ip_cidrs.append(ip_cidr)
+            ip_cidrs.append({'cidr': ip_cidr})
 
         if (self.conf.enable_isolated_metadata and
             self.conf.use_namespaces):
-            ip_cidrs.append(METADATA_DEFAULT_CIDR)
+            ip_cidrs.append({'cidr': METADATA_DEFAULT_CIDR})
 
         self.driver.init_l3(interface_name, ip_cidrs,
                             namespace=network.namespace)

@@ -81,15 +81,17 @@ class HaRouter(router.RouterInfo):
         config = self.keepalived_manager.config
 
         interface_name = self.get_ha_device_name(self.ha_port['id'])
-        ha_port_cidr = self.ha_port['subnet']['cidr']
-        instance = keepalived.KeepalivedInstance(
-            'BACKUP',
-            interface_name,
-            self.ha_vr_id,
-            ha_port_cidr,
-            nopreempt=True,
-            advert_int=self.agent_conf.ha_vrrp_advert_int,
-            priority=self.ha_priority)
+        subnets = self.ha_port.get('subnets', [])
+        for subnet in subnets:
+            ha_port_cidr = subnet['cidr']
+            instance = keepalived.KeepalivedInstance(
+                'BACKUP',
+                interface_name,
+                self.ha_vr_id,
+                ha_port_cidr,
+                nopreempt=True,
+                advert_int=self.agent_conf.ha_vrrp_advert_int,
+                priority=self.ha_priority)
         instance.track_interfaces.append(interface_name)
 
         if self.agent_conf.ha_vrrp_auth_password:
@@ -144,7 +146,7 @@ class HaRouter(router.RouterInfo):
         self.driver.plug(network_id, port_id, interface_name, mac_address,
                          namespace=self.ns_name,
                          prefix=HA_DEV_PREFIX)
-        self.driver.init_l3(interface_name, [internal_cidr],
+        self.driver.init_l3(interface_name, [{'cidr': internal_cidr}],
                             namespace=self.ns_name)
 
     def ha_network_removed(self):
@@ -184,16 +186,19 @@ class HaRouter(router.RouterInfo):
                 route['nexthop']))
 
     def _add_default_gw_virtual_route(self, ex_gw_port, interface_name):
-        gw_ip = ex_gw_port['subnet']['gateway_ip']
-        if gw_ip:
-            # TODO(Carl) This is repeated everywhere.  A method would be nice.
-            instance = self._get_keepalived_instance()
-            instance.virtual_routes = (
-                [route for route in instance.virtual_routes
-                 if route.destination != '0.0.0.0/0'])
-            instance.virtual_routes.append(
-                keepalived.KeepalivedVirtualRoute(
-                    '0.0.0.0/0', gw_ip, interface_name))
+        subnets = ex_gw_port.get('subnets', [])
+        for subnet in subnets:
+            gw_ip = subnet['gateway_ip']
+            if gw_ip:
+                # TODO(Carl) This is repeated everywhere.  A method would be
+                # nice.
+                instance = self._get_keepalived_instance()
+                instance.virtual_routes = (
+                    [route for route in instance.virtual_routes
+                    if route.destination != '0.0.0.0/0'])
+                instance.virtual_routes.append(
+                    keepalived.KeepalivedVirtualRoute(
+                        '0.0.0.0/0', gw_ip, interface_name))
 
     def _get_ipv6_lladdr(self, mac_addr):
         return '%s/64' % netaddr.EUI(mac_addr).ipv6_link_local()

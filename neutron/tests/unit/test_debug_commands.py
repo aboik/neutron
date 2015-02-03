@@ -133,7 +133,8 @@ class TestDebugCommands(base.BaseTestCase):
                                                      bridge=None,
                                                      namespace=namespace),
                                       mock.call.init_l3('tap12345678-12',
-                                                        ['10.0.0.3/24'],
+                                                        [{'cidr':
+                                                        '10.0.0.3/24'}],
                                                         namespace=namespace
                                                         )])
 

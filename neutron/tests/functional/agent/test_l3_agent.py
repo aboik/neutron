@@ -130,6 +130,13 @@ class L3AgentTestFramework(base.BaseOVSLinuxTestCase):
                'fixed_ip_address': fixed_address}
         router.router[l3_constants.FLOATINGIP_KEY].append(fip)
 
+    def _add_internal_interface_by_subnet(self, router, count=1,
+                                          ip_version=4,
+                                          ipv6_subnet_modes=None,
+                                          interface_id=None):
+        return test_l3_agent.router_append_subnet(router, count,
+                ip_version, ipv6_subnet_modes, interface_id)
+
     def _namespace_exists(self, namespace):
         ip = ip_lib.IPWrapper(namespace=namespace)
         return ip.netns.exists(namespace)
@@ -404,6 +411,14 @@ class L3AgentTestCase(L3AgentTestFramework):
     def _router_lifecycle(self, enable_ha, ip_version=4):
         router_info = self.generate_router_info(enable_ha, ip_version)
         router = self.manage_router(self.agent, router_info)
+
+        # Add multiple-IPv6-prefix internal router port
+        slaac = l3_constants.IPV6_SLAAC
+        slaac_mode = {'ra_mode': slaac, 'address_mode': slaac}
+        subnet_modes = [slaac_mode] * 2
+        self._add_internal_interface_by_subnet(router.router, count=2,
+                ip_version=6, ipv6_subnet_modes=subnet_modes)
+        self.agent.process_router(router)
 
         if enable_ha:
             port = router.get_ex_gw_port()

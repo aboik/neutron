@@ -48,6 +48,10 @@ def get_ipv6_addr_by_EUI64(prefix, mac):
                           'EUI-64: %s') % prefix)
 
 
+def compress_cidr(cidr):
+    return str(netaddr.IPNetwork(cidr))
+
+
 def is_enabled():
     global _IS_IPV6_ENABLED
 

@@ -87,6 +87,7 @@ class TestABCDriver(TestBase):
         self.ip_dev.assert_has_calls(
             [mock.call('tap0', namespace=ns),
              mock.call().addr.list(scope='global', filters=['permanent']),
+             mock.call().addr.list(scope='site', filters=['permanent']),
              mock.call().addr.add(4, '192.168.1.2/24', '192.168.1.255'),
              mock.call().addr.delete(4, '172.16.77.240/24'),
              mock.call().route.list_onlink_routes(),
@@ -117,6 +118,7 @@ class TestABCDriver(TestBase):
         self.ip_dev.assert_has_calls(
             [mock.call('tap0', namespace=ns),
              mock.call().addr.list(scope='global', filters=['permanent']),
+             mock.call().addr.list(scope='site', filters=['permanent']),
              mock.call().addr.add(4, '192.168.1.2/24', '192.168.1.255')])
         self.assertFalse(self.ip_dev().addr.delete.called)
 
@@ -146,6 +148,7 @@ class TestABCDriver(TestBase):
         expected_calls = (
             [mock.call('tap0', namespace=ns),
              mock.call().addr.list(scope='global', filters=['permanent']),
+             mock.call().addr.list(scope='site', filters=['permanent']),
              mock.call().addr.add(6, '2001:db8:a::124/64',
                                   '2001:db8:a:0:ffff:ffff:ffff:ffff')])
         if include_gw_ip:
@@ -204,6 +207,7 @@ class TestABCDriver(TestBase):
         self.ip_dev.assert_has_calls(
             [mock.call('tap0', namespace=ns),
              mock.call().addr.list(scope='global', filters=['permanent']),
+             mock.call().addr.list(scope='site', filters=['permanent']),
              mock.call().addr.add(4, '192.168.1.2/24', '192.168.1.255'),
              mock.call().addr.add(6, '2001:db8:a::124/64',
                                   '2001:db8:a:0:ffff:ffff:ffff:ffff'),

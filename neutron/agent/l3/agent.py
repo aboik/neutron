@@ -414,6 +414,20 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
         ip_devs = ip_wrapper.get_devices(exclude_loopback=True)
         return [ip_dev.name for ip_dev in ip_devs]
 
+    def _is_ipv6_port(self, port):
+        for subnet in port['subnets']:
+            if netaddr.IPNetwork(subnet['cidr']).version == 6:
+                return True
+        return False
+
+    def _add_ipv6_prefixes(self, new_port, existing_ipv6_ports):
+        target_port = next((p for p in existing_ipv6_ports
+                           if p['network_id'] == new_port['network_id']),
+                           None)
+        if target_port:
+            target_port['fixed_ips'].extend(new_port['fixed_ips'])
+            return True
+
     def _process_internal_ports(self, ri):
         internal_ports = ri.router.get(l3_constants.INTERFACE_KEY, [])
         existing_port_ids = set([p['id'] for p in ri.internal_ports])
@@ -424,25 +438,36 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
                      p['id'] not in existing_port_ids]
         old_ports = [p for p in ri.internal_ports if
                      p['id'] not in current_port_ids]
+        new_ipv6_ports = filter(self._is_ipv6_port, new_ports)
+        #old_ipv6_ports = filter(self._is_ipv6_port, old_ports)
+        existing_ipv6_ports = filter(self._is_ipv6_port, ri.internal_ports)
 
         new_ipv6_port = False
         old_ipv6_port = False
+
+        # Add IPv6 prefix(es) to existing port with same network ID
+        # if possible
+        for p in new_ipv6_ports:
+            if self._add_ipv6_prefixes(p, existing_ipv6_ports):
+                new_ipv6_ports.remove(p)
+                new_ipv6_port = True
+
+        # TODO(dboik): Remove prefixes from existing port
+
+        # Add new port
         for p in new_ports:
             self.internal_network_added(ri, p)
             ri.internal_ports.append(p)
             self._set_subnet_arp_info(ri, p)
-            for subnet in p['subnets']:
-                if (not new_ipv6_port and
-                    netaddr.IPNetwork(subnet['cidr']).version == 6):
-                    new_ipv6_port = True
+            if self._is_ipv6_port(p) and not new_ipv6_port:
+                new_ipv6_port = True
 
+        # Delete old port
         for p in old_ports:
             self.internal_network_removed(ri, p)
             ri.internal_ports.remove(p)
-            for subnet in p['subnets']:
-                if (not old_ipv6_port and
-                    netaddr.IPNetwork(subnet['cidr']).version == 6):
-                    old_ipv6_port = True
+            if self._is_ipv6_port(p) and not old_ipv6_port:
+                old_ipv6_port = True
 
         # Enable RA
         if new_ipv6_port or old_ipv6_port:

@@ -20,6 +20,7 @@ from oslo_log import log as logging
 
 from neutron.agent.linux import utils
 from neutron.common import exceptions
+from neutron.common import ipv6_utils
 from neutron.i18n import _LE
 
 LOG = logging.getLogger(__name__)
@@ -601,7 +602,8 @@ def device_exists_with_ips_and_mac(device_name, ip_cidrs, mac, namespace=None):
         if mac != device.link.address:
             return False
         for ip_cidr in ip_cidrs:
-            if ip_cidr not in [ip['cidr'] for ip in device.addr.list()]:
+            if ipv6_utils.compress_cidr(ip_cidr) not in [ip['cidr'] for ip in
+                                                         device.addr.list()]:
                 return False
     except RuntimeError:
         return False

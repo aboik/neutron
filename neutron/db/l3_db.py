@@ -493,17 +493,21 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                                       port_id=port['id'],
                                       device_id=port['device_id'])
             fixed_ips = [ip for ip in port['fixed_ips']]
-            if len(fixed_ips) != 1:
-                msg = _('Router port must have exactly one fixed IP')
-                raise n_exc.BadRequest(resource='router', msg=msg)
-            subnet_id = fixed_ips[0]['subnet_id']
-            subnet = self._core_plugin._get_subnet(context, subnet_id)
-            self._check_for_dup_router_subnet(context, router,
-                                              port['network_id'],
-                                              subnet['id'],
-                                              subnet['cidr'])
+            for fixed_ip in fixed_ips:
+                subnet_id = fixed_ip['subnet_id']
+                subnet = self._core_plugin._get_subnet(context, subnet_id)
+                self._check_for_dup_router_subnet(context, router,
+                                                  port['network_id'],
+                                                  subnet['id'],
+                                                  subnet['cidr'])
             port.update({'device_id': router.id, 'device_owner': owner})
             return port
+
+    def _port_has_ipv6_subnet(self, port):
+        for fixed_ip in port['fixed_ips']:
+            if netaddr.IPNetwork(fixed_ip['ip_address']).version == 6:
+                LOG.debug("Port has ipv6 subnet: %s" % fixed_ip['ip_address'])
+                return True
 
     def _add_interface_by_subnet(self, context, router, subnet_id, owner):
         subnet = self._core_plugin._get_subnet(context, subnet_id)
@@ -523,6 +527,23 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         fixed_ip = {'ip_address': subnet['gateway_ip'],
                     'subnet_id': subnet['id']}
 
+        if subnet['ip_version'] == 6:
+            existing_ipv6_ports = [rp for rp in router.attached_ports
+                                   if self._port_has_ipv6_subnet(rp['port'])]
+            # Add new prefix to an existing port with the same network id
+            # if one exists
+            for existing_port in existing_ipv6_ports:
+                if existing_port['port']['network_id'] == subnet['network_id']:
+                    fixed_ips = []
+                    for fxip in existing_port['port']['fixed_ips']:
+                        fixed_ips.append({'ip_address': fxip.ip_address,
+                                          'subnet_id': fxip.subnet_id})
+                    fixed_ips.append(fixed_ip)
+                    return self._core_plugin.update_port(context,
+                            existing_port['port_id'],
+                            {'port':
+                                {'fixed_ips': fixed_ips}}), False
+
         return self._core_plugin.create_port(context, {
             'port':
             {'tenant_id': subnet['tenant_id'],
@@ -532,7 +553,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
              'admin_state_up': True,
              'device_id': router.id,
              'device_owner': owner,
-             'name': ''}})
+             'name': ''}}), True
 
     @staticmethod
     def _make_router_interface_info(
@@ -549,20 +570,24 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         add_by_port, add_by_sub = self._validate_interface_info(interface_info)
         device_owner = self._get_device_owner(context, router_id)
 
+        # This should be True unless adding an IPv6 prefix to an existing port
+        new_port = True
+
         if add_by_port:
             port = self._add_interface_by_port(
                 context, router, interface_info['port_id'], device_owner)
         elif add_by_sub:
-            port = self._add_interface_by_subnet(
+            port, new_port = self._add_interface_by_subnet(
                 context, router, interface_info['subnet_id'], device_owner)
 
-        with context.session.begin(subtransactions=True):
-            router_port = RouterPort(
-                port_id=port['id'],
-                router_id=router.id,
-                port_type=device_owner
-            )
-            context.session.add(router_port)
+        if new_port:
+            with context.session.begin(subtransactions=True):
+                router_port = RouterPort(
+                    port_id=port['id'],
+                    router_id=router.id,
+                    port_type=device_owner
+                )
+                context.session.add(router_port)
 
         return self._make_router_interface_info(
             router.id, port['tenant_id'], port['id'],

@@ -420,13 +420,18 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
                 return True
         return False
 
-    def _add_ipv6_prefixes(self, new_port, existing_ipv6_ports):
+    '''def _add_ipv6_prefixes(self, new_port, existing_ipv6_ports):
         target_port = next((p for p in existing_ipv6_ports
                            if p['network_id'] == new_port['network_id']),
                            None)
         if target_port:
+            LOG.debug("Adding new port fixed ip's to existing port")
             target_port['fixed_ips'].extend(new_port['fixed_ips'])
+            LOG.debug("Existing port updated:")
+            LOG.debug(target_port)
             return True
+        LOG.debug("Couldn't find an existing port to add prefixes")
+    '''
 
     def _process_internal_ports(self, ri):
         internal_ports = ri.router.get(l3_constants.INTERFACE_KEY, [])
@@ -445,11 +450,28 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
         new_ipv6_port = False
         old_ipv6_port = False
 
+        def _add_ipv6_prefixes(new_port, existing_ipv6_ports):
+            target_port = next((p for p in existing_ipv6_ports
+                if p['network_id'] == new_port['network_id']),
+                None)
+            if target_port:
+                LOG.debug("Adding new port fixed ip's to existing port")
+                target_port['fixed_ips'].extend(new_port['fixed_ips'])
+                self.internal_network_added(ri, target_port)
+                LOG.debug("Existing port updated:")
+                LOG.debug(target_port)
+                return True
+
         # Add IPv6 prefix(es) to existing port with same network ID
         # if possible
+        LOG.debug("About to loop through ipv6 ports")
+        LOG.debug("There are %s new ipv6 ports" % len(new_ipv6_ports))
+        LOG.debug("There are %s new ports" % len(new_ports))
         for p in new_ipv6_ports:
-            if self._add_ipv6_prefixes(p, existing_ipv6_ports):
-                new_ipv6_ports.remove(p)
+            LOG.debug(p)
+            if _add_ipv6_prefixes(p, existing_ipv6_ports):
+                LOG.debug("Remove port from new ports list")
+                new_ports.remove(p)
                 new_ipv6_port = True
 
         # TODO(dboik): Remove prefixes from existing port

@@ -591,7 +591,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
 
         return self._make_router_interface_info(
             router.id, port['tenant_id'], port['id'],
-            port['fixed_ips'][0]['subnet_id'])
+            [fixed_ip['subnet_id'] for fixed_ip in port['fixed_ips']])
 
     def _confirm_router_interface_not_in_use(self, context, router_id,
                                              subnet_id):

@@ -279,7 +279,7 @@ class L3_NAT_with_dvr_db_mixin(l3_db.L3_NAT_db_mixin,
 
         router_interface_info = self._make_router_interface_info(
             router_id, port['tenant_id'], port['id'],
-            port['fixed_ips'][0]['subnet_id'])
+            [fixed_ip['subnet_id'] for fixed_ip in port['fixed_ips']])
         self.notify_router_interface_action(
             context, router_interface_info, 'add')
         return router_interface_info

@@ -275,11 +275,11 @@ class L3_NAT_with_dvr_db_mixin(l3_db.L3_NAT_db_mixin,
             if router.extra_attributes.distributed and router.gw_port:
                 self.add_csnat_router_interface_port(
                     context.elevated(), router, port['network_id'],
-                    port['fixed_ips'][0]['subnet_id'])
+                    port['fixed_ips'][-1]['subnet_id'])
 
         router_interface_info = self._make_router_interface_info(
             router_id, port['tenant_id'], port['id'],
-            [fixed_ip['subnet_id'] for fixed_ip in port['fixed_ips']])
+            port['fixed_ips'][-1]['subnet_id'])
         self.notify_router_interface_action(
             context, router_interface_info, 'add')
         return router_interface_info
@@ -306,8 +306,7 @@ class L3_NAT_with_dvr_db_mixin(l3_db.L3_NAT_db_mixin,
                 context.elevated(), router, subnet_id=subnet_id)
 
         router_interface_info = self._make_router_interface_info(
-            router_id, port['tenant_id'], port['id'],
-            [fixed_ip['subnet_id'] for fixed_ip in port['fixed_ips']])
+            router_id, port['tenant_id'], port['id'], subnet['id'])
         self.notify_router_interface_action(
             context, router_interface_info, 'remove')
         return router_interface_info

@@ -591,7 +591,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
 
         return self._make_router_interface_info(
             router.id, port['tenant_id'], port['id'],
-            [fixed_ip['subnet_id'] for fixed_ip in port['fixed_ips']])
+            port['fixed_ips'][-1]['subnet_id'])
 
     def _confirm_router_interface_not_in_use(self, context, router_id,
                                              subnet_id):
@@ -632,7 +632,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                     context, router_id, port_subnet_id)
         self._core_plugin.delete_port(context, port_db['id'],
                                       l3_port_check=False)
-        return (port_db, subnet)
+        return (port_db, subnets[0])
 
     def _remove_interface_by_subnet(self, context,
                                     router_id, subnet_id, owner):
@@ -652,13 +652,12 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                 port_subnets = [fxip['subnet_id'] for fxip in p['fixed_ips']]
                 if subnet_id in port_subnets and len(port_subnets) > 1:
                     # multiple prefix port - delete prefix from port
-                    LOG.debug("DBOIK: deleting prefix %s from port" % subnet_id)
                     fixed_ips = []
                     for fxip in p['fixed_ips']:
                         if fxip['subnet_id'] != subnet_id:
                             fixed_ips.append({'subnet_id': fxip['subnet_id'],
-                                              'ip_address': fxip['ip_address']})
-                    LOG.debug("DBOIK: prefixes after deletion: %s" % fixed_ips)
+                                              'ip_address':
+                                              fxip['ip_address']})
                     self._core_plugin.update_port(context, p['id'],
                             {'port':
                                 {'fixed_ips': fixed_ips}})

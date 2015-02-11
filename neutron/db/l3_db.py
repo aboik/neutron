@@ -620,13 +620,16 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         except exc.NoResultFound:
             raise l3.RouterInterfaceNotFound(router_id=router_id,
                                              port_id=port_id)
-        port_subnet_id = port_db['fixed_ips'][0]['subnet_id']
-        if subnet_id and port_subnet_id != subnet_id:
+        port_subnet_ids = [fixed_ip['subnet_id']
+                           for fixed_ip in port_db['fixed_ips']]
+        if subnet_id and subnet_id not in port_subnet_ids:
             raise n_exc.SubnetMismatchForPort(
                 port_id=port_id, subnet_id=subnet_id)
-        subnet = self._core_plugin._get_subnet(context, port_subnet_id)
-        self._confirm_router_interface_not_in_use(
-            context, router_id, port_subnet_id)
+        subnets = [self._core_plugin._get_subnet(context, port_subnet_id)
+                   for port_subnet_id in port_subnet_ids]
+        for port_subnet_id in port_subnet_ids:
+            self._confirm_router_interface_not_in_use(
+                    context, router_id, port_subnet_id)
         self._core_plugin.delete_port(context, port_db['id'],
                                       l3_port_check=False)
         return (port_db, subnet)
@@ -646,7 +649,22 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
             )
 
             for p in ports:
-                if p['fixed_ips'][0]['subnet_id'] == subnet_id:
+                port_subnets = [fxip['subnet_id'] for fxip in p['fixed_ips']]
+                if subnet_id in port_subnets and len(port_subnets) > 1:
+                    # multiple prefix port - delete prefix from port
+                    LOG.debug("DBOIK: deleting prefix %s from port" % subnet_id)
+                    fixed_ips = []
+                    for fxip in p['fixed_ips']:
+                        if fxip['subnet_id'] != subnet_id:
+                            fixed_ips.append({'subnet_id': fxip['subnet_id'],
+                                              'ip_address': fxip['ip_address']})
+                    LOG.debug("DBOIK: prefixes after deletion: %s" % fixed_ips)
+                    self._core_plugin.update_port(context, p['id'],
+                            {'port':
+                                {'fixed_ips': fixed_ips}})
+                    return (p, subnet)
+                elif subnet_id in port_subnets:
+                    # only one subnet on port - delete the port
                     self._core_plugin.delete_port(context, p['id'],
                                                   l3_port_check=False)
                     return (p, subnet)
@@ -1090,13 +1108,8 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
 
         def each_port_with_ip():
             for port in ports:
-                dev_owner = port.get('device_owner')
                 fixed_ips = port.get('fixed_ips', [])
-                if len(fixed_ips) > 1 and dev_owner != DEVICE_OWNER_ROUTER_GW:
-                    LOG.info(_LI("Ignoring multiple IPs on "
-                                 "internal router port %s"), port['id'])
-                    continue
-                elif not fixed_ips:
+                if not fixed_ips:
                     # Skip ports without IPs, which can occur if a subnet
                     # attached to a router is deleted
                     LOG.info(_LI("Skipping port %s as no IP is configure on "

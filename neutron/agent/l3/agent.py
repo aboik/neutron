@@ -414,38 +414,84 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
         ip_devs = ip_wrapper.get_devices(exclude_loopback=True)
         return [ip_dev.name for ip_dev in ip_devs]
 
+    def _get_port_by_id(self, id, ports):
+        return next((p for p in ports if p['id'] == id))
+
+    def _get_prefix_updated_ports(self, existing_port_ids, current_port_ids,
+                                  existing_ports, current_ports):
+        port_ids = [id for id in existing_port_ids & current_port_ids]
+        prefix_added_ports, prefix_deleted_ports = [], []
+
+        for id in port_ids:
+            existing_port = self._get_port_by_id(id, existing_ports)
+            current_port = self._get_port_by_id(id, current_ports)
+            if existing_port['fixed_ips'] != current_port['fixed_ips']:
+                existing_prefixes = set([current_port['fixed_ips']])
+                current_prefixes = set([current_port['fixed_ips']])
+                added_prefixes = current_prefixes - existing_prefixes
+                deleted_prefixes = existing_prefixes - current_prefixes
+                if added_prefixes:
+                    prefix_added_ports += {'port': current_port,
+                                          'added_prefixes': added_prefixes}
+                if deleted_prefixes:
+                    prefix_deleted_ports += {'port': current_port,
+                                             'deleted_prefixes':
+                                                 deleted_prefixes}
+
+        return prefix_added_ports, prefix_deleted_ports
+
+    def _is_ipv6_port(self, port):
+        for subnet in port['subnets']:
+            if netaddr.IPNetwork(subnet['cidr']).version == 6:
+                return True
+
     def _process_internal_ports(self, ri):
         internal_ports = ri.router.get(l3_constants.INTERFACE_KEY, [])
         existing_port_ids = set([p['id'] for p in ri.internal_ports])
         current_port_ids = set([p['id'] for p in internal_ports
                                 if p['admin_state_up']])
+        existing_ipv6_port_ids = set([p['id'] for p in ri.internal_ports
+                                     if self._is_ipv6_port(p)])
+        current_ipv6_port_ids = set([p['id'] for p in internal_ports
+                                    if self._is_ipv6_port(p)
+                                    and p['admin_state_up']])
         new_ports = [p for p in internal_ports if
                      p['id'] in current_port_ids and
                      p['id'] not in existing_port_ids]
         old_ports = [p for p in ri.internal_ports if
                      p['id'] not in current_port_ids]
+        prefix_added_ports, prefix_deleted_ports = (
+                self._get_prefix_updated_ports(existing_ipv6_port_ids,
+                                               current_ipv6_port_ids,
+                                               ri.internal_ports,
+                                               internal_ports))
 
-        new_ipv6_port = False
-        old_ipv6_port = False
+        enable_ra = False
         for p in new_ports:
             self.internal_network_added(ri, p)
             ri.internal_ports.append(p)
             self._set_subnet_arp_info(ri, p)
-            for subnet in p['subnets']:
-                if (not new_ipv6_port and
-                    netaddr.IPNetwork(subnet['cidr']).version == 6):
-                    new_ipv6_port = True
+            if self._is_ipv6_port(p):
+                enable_ra = True
 
         for p in old_ports:
             self.internal_network_removed(ri, p)
             ri.internal_ports.remove(p)
-            for subnet in p['subnets']:
-                if (not old_ipv6_port and
-                    netaddr.IPNetwork(subnet['cidr']).version == 6):
-                    old_ipv6_port = True
+            if self._is_ipv6_port(p):
+                enable_ra = True
+
+        for p in prefix_added_ports:
+            self.internal_network_prefix_added(ri, p['port'],
+                                               p['added_prefixes'])
+            enable_ra = True
+
+        for p in prefix_deleted_ports:
+            self.internal_network_prefix_deleted(ri, p['port'],
+                                                 p['deleted_prefixes'])
+            enable_ra = True
 
         # Enable RA
-        if new_ipv6_port or old_ipv6_port:
+        if enable_ra:
             ra.enable_ipv6_ra(ri.router_id,
                               ri.ns_name,
                               internal_ports,
@@ -1033,6 +1079,14 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
                 ri._clear_vips(interface_name)
             self.driver.unplug(interface_name, namespace=ri.ns_name,
                                prefix=INTERNAL_DEV_PREFIX)
+
+    # TODO(dboik): implement
+    def internal_network_prefix_added(self, ri, port):
+        pass
+
+    # TODO(dboik): implement
+    def internal_network_prefix_deleted(self, ri, port):
+        pass
 
     def floating_forward_rules(self, floating_ip, fixed_ip):
         return [('PREROUTING', '-d %s -j DNAT --to %s' %

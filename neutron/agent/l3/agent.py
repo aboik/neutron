@@ -419,24 +419,29 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
 
     def _get_prefix_updated_ports(self, existing_port_ids, current_port_ids,
                                   existing_ports, current_ports):
-        port_ids = [id for id in existing_port_ids & current_port_ids]
+        port_ids = list(existing_port_ids & current_port_ids)
         prefix_added_ports, prefix_deleted_ports = [], []
 
         for id in port_ids:
             existing_port = self._get_port_by_id(id, existing_ports)
             current_port = self._get_port_by_id(id, current_ports)
             if existing_port['fixed_ips'] != current_port['fixed_ips']:
-                existing_prefixes = set([current_port['fixed_ips']])
-                current_prefixes = set([current_port['fixed_ips']])
-                added_prefixes = current_prefixes - existing_prefixes
-                deleted_prefixes = existing_prefixes - current_prefixes
-                if added_prefixes:
-                    prefix_added_ports += {'port': current_port,
-                                          'added_prefixes': added_prefixes}
-                if deleted_prefixes:
-                    prefix_deleted_ports += {'port': current_port,
-                                             'deleted_prefixes':
-                                                 deleted_prefixes}
+                existing_ips = existing_port['fixed_ips']
+                current_ips = current_port['fixed_ips']
+                added_ips, deleted_ips = [], []
+                for ip in existing_ips:
+                    if ip not in current_ips:
+                        deleted_ips.append(ip)
+                for ip in current_ips:
+                    if ip not in existing_ips:
+                        added_ips.append(ip)
+                if added_ips:
+                    prefix_added_ports.append({'port': current_port,
+                                               'added_fixed_ips': added_ips})
+                if deleted_ips:
+                    prefix_deleted_ports.append({'port': current_port,
+                                                 'deleted_fixed_ips':
+                                                 deleted_ips})
 
         return prefix_added_ports, prefix_deleted_ports
 
@@ -481,13 +486,21 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
                 enable_ra = True
 
         for p in prefix_added_ports:
+            ri_port_idx = next(idx for (idx, port)
+                    in enumerate(ri.internal_ports)
+                    if port['id'] == p['port']['id'])
+            ri.internal_ports[ri_port_idx] = p['port']
             self.internal_network_prefix_added(ri, p['port'],
-                                               p['added_prefixes'])
+                                               p['added_fixed_ips'])
             enable_ra = True
 
         for p in prefix_deleted_ports:
+            ri_port_idx = next(idx for (idx, port)
+                    in enumerate(ri.internal_ports)
+                    if port['id'] == p['port']['id'])
+            ri.internal_ports[ri_port_idx] = p
             self.internal_network_prefix_deleted(ri, p['port'],
-                                                 p['deleted_prefixes'])
+                                                 p['deleted_fixed_ips'])
             enable_ra = True
 
         # Enable RA
@@ -981,6 +994,18 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
                   (interface_name, ex_gw_ip))]
         return rules
 
+    def _ha_add_vips(self, ri, fixed_ips, interface_name):
+        for fixed_ip in fixed_ips:
+            ip_cidr = "%s%s" % (fixed_ip['ip_address'],
+                                fixed_ip['prefixlen'])
+            ri._add_vip(ip_cidr, interface_name)
+
+    def _ha_remove_vips(self, ri, fixed_ips):
+        for fixed_ip in fixed_ips:
+            ip_cidr = "%s%s" % (fixed_ip['ip_address'],
+                                fixed_ip['prefixlen'])
+            ri._remove_vip(ip_cidr)
+
     def _internal_network_added(self, ns_name, network_id, port_id,
                                 fixed_ips, mac_address,
                                 interface_name, prefix, is_ha=False):
@@ -1025,10 +1050,7 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
 
         if ri.is_ha:
             ri._ha_disable_addressing_on_interface(interface_name)
-            for fixed_ip in fixed_ips:
-                ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
-                                     fixed_ip['prefixlen'])
-                ri._add_vip(ip_cidr, interface_name)
+            self._ha_add_vips(ri, fixed_ips, interface_name)
 
         ex_gw_port = self._get_ex_gw_port(ri)
         if ri.router['distributed'] and ex_gw_port:
@@ -1080,13 +1102,52 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
             self.driver.unplug(interface_name, namespace=ri.ns_name,
                                prefix=INTERNAL_DEV_PREFIX)
 
-    # TODO(dboik): implement
-    def internal_network_prefix_added(self, ri, port):
-        pass
+    # Add an IPv6 fixed ip on an existing internal router port
+    def internal_network_prefix_added(self, ri, port, added_fixed_ips):
+        port_id = port['id']
+        interface_name = self.get_internal_device_name(port_id)
 
-    # TODO(dboik): implement
-    def internal_network_prefix_deleted(self, ri, port):
-        pass
+        if ri.is_ha:
+            self._ha_add_vips(self, ri, added_fixed_ips, interface_name)
+        else:
+            ip_addrs = []
+            added_ip_addrs = []
+            old_ip_addrs = []
+            for fixed_ip in port['fixed_ips']:
+                ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
+                                     fixed_ip['prefixlen'])
+                ip_addrs.append({'cidr': ip_cidr})
+            for fixed_ip in added_fixed_ips:
+                ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
+                                     fixed_ip['prefixlen'])
+                added_ip_addrs.append({'cidr': ip_cidr})
+            for ip_cidr in ip_addrs:
+                if ip_cidr not in added_ip_addrs:
+                    old_ip_addrs.append(ip_cidr)
+            self.driver.init_l3(interface_name, added_ip_addrs,
+                                namespace=ri.ns_name,
+                                preserve_ips=old_ip_addrs)
+
+    # Delete an IPv6 fixed ip on an existing internal router port with
+    # more than one prefix
+    def internal_network_prefix_deleted(self, ri, port, deleted_fixed_ips):
+        port_id = port['id']
+        interface_name = self.get_internal_device_name(port_id)
+
+        if ip_lib.device_exists(interface_name,
+                                root_helper=self.root_helper,
+                                namespace=ri.ns_name):
+            if ri.is_ha:
+                self._ha_remove_vips(ri, deleted_fixed_ips)
+            else:
+                ip_addrs = []
+                for fixed_ip in port['fixed_ips']:
+                    if fixed_ip not in deleted_fixed_ips:
+                        ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
+                                             fixed_ip['prefixlen'])
+                        ip_addrs.append({'cidr': ip_cidr})
+                self.driver.init_l3(interface_name, ip_addrs,
+                                    namespace=ri.ns_name)
 
     def floating_forward_rules(self, floating_ip, fixed_ip):
         return [('PREROUTING', '-d %s -j DNAT --to %s' %

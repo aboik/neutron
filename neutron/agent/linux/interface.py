@@ -93,7 +93,8 @@ class LinuxInterfaceDriver(object):
                                  namespace=namespace)
 
         previous = {}
-        for address in device.addr.list(scope='global', filters=['permanent']):
+        for address in (device.addr.list(scope='global', filters=['permanent'])
+                     + device.addr.list(scope='site', filters=['permanent'])):
             previous[address['cidr']] = address['ip_version']
 
         # add new addresses

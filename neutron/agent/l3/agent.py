@@ -1140,14 +1140,15 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
             if ri.is_ha:
                 self._ha_remove_vips(ri, deleted_fixed_ips)
             else:
-                ip_addrs = []
+                preserve_ips = []
                 for fixed_ip in port['fixed_ips']:
                     if fixed_ip not in deleted_fixed_ips:
                         ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
                                              fixed_ip['prefixlen'])
-                        ip_addrs.append({'cidr': ip_cidr})
-                self.driver.init_l3(interface_name, ip_addrs,
-                                    namespace=ri.ns_name)
+                        preserve_ips.append(ip_cidr)
+                self.driver.init_l3(interface_name, ip_addrs = [],
+                                    namespace=ri.ns_name,
+                                    preserve_ips=preserve_ips)
 
     def floating_forward_rules(self, floating_ip, fixed_ip):
         return [('PREROUTING', '-d %s -j DNAT --to %s' %

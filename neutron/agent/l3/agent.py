@@ -498,7 +498,7 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
             ri_port_idx = next(idx for (idx, port)
                     in enumerate(ri.internal_ports)
                     if port['id'] == p['port']['id'])
-            ri.internal_ports[ri_port_idx] = p
+            ri.internal_ports[ri_port_idx] = p['port']
             self.internal_network_prefix_deleted(ri, p['port'],
                                                  p['deleted_fixed_ips'])
             enable_ra = True

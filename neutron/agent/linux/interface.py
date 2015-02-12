@@ -80,7 +80,7 @@ class LinuxInterfaceDriver(object):
         self.root_helper = config.get_root_helper(conf)
 
     def init_l3(self, device_name, ip_addrs, namespace=None,
-                preserve_ips=[], extra_subnets=[]):
+                preserve_ips=[], extra_subnets=[], ext_gateway_port=False):
         """Set the L3 settings for the interface using data from the port.
 
         ip_addrs: list of ip address dictionaries, each entry containing:
@@ -120,7 +120,7 @@ class LinuxInterfaceDriver(object):
                 # Enable IPv6 routing on this interface
                 self._ipv6_enable_forwarding(self.root_helper, namespace,
                                              device_name)
-                if gateway_ip:
+                if gateway_ip or not ext_gateway_port:
                     # Gateway IP is set, no need to learn it from RAs
                     self._ipv6_disable_ra_defrtr(self.root_helper, namespace,
                                                  device_name)

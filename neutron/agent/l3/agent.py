@@ -942,7 +942,7 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
             self.driver.init_l3(
                 interface_name, ip_addrs, namespace=ns_name,
                 extra_subnets=ex_gw_port.get('extra_subnets', []),
-                preserve_ips=preserve_ips)
+                preserve_ips=preserve_ips, ext_gateway_port=True)
 
             for ip_addr in ip_addrs:
                 ip_cidr = ip_addr['cidr']

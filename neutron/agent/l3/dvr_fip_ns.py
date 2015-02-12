@@ -103,7 +103,7 @@ class FipNamespace(object):
                                  fixed_ip['prefixlen'])
             ip_addrs.append({'cidr': ip_cidr})
         self.driver.init_l3(interface_name, ip_addrs,
-                            namespace=ns_name)
+                            namespace=ns_name, ext_gateway_port=True)
 
         for ip_addr in ip_addrs:
             ip_cidr = ip_addr['cidr']

@@ -493,20 +493,21 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                                       port_id=port['id'],
                                       device_id=port['device_id'])
             fixed_ips = [ip for ip in port['fixed_ips']]
+            subnets = []
             for fixed_ip in fixed_ips:
                 subnet_id = fixed_ip['subnet_id']
                 subnet = self._core_plugin._get_subnet(context, subnet_id)
+                subnets.append(subnet)
                 self._check_for_dup_router_subnet(context, router,
                                                   port['network_id'],
                                                   subnet['id'],
                                                   subnet['cidr'])
             port.update({'device_id': router.id, 'device_owner': owner})
-            return port
+            return port, subnets
 
     def _port_has_ipv6_subnet(self, port):
         for fixed_ip in port['fixed_ips']:
             if netaddr.IPNetwork(fixed_ip['ip_address']).version == 6:
-                LOG.debug("Port has ipv6 subnet: %s" % fixed_ip['ip_address'])
                 return True
 
     def _add_interface_by_subnet(self, context, router, subnet_id, owner):
@@ -542,7 +543,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                     return self._core_plugin.update_port(context,
                             existing_port['port_id'],
                             {'port':
-                                {'fixed_ips': fixed_ips}}), False
+                                {'fixed_ips': fixed_ips}}), [subnet], False
 
         return self._core_plugin.create_port(context, {
             'port':
@@ -557,12 +558,15 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
 
     @staticmethod
     def _make_router_interface_info(
-            router_id, tenant_id, port_id, subnet_id):
+            router_id, tenant_id, port_id, subnet_id, subnet_ids):
+        info = {'id': router_id, 'tenant_id': tenant_id, 'port_id': port_id, 'subnet_id': subnet_id, 'subnet_ids': subnet_ids}
+        LOG.debug("DBOIK: make_router_interface_info: %s" % info)
         return {
             'id': router_id,
             'tenant_id': tenant_id,
             'port_id': port_id,
-            'subnet_id': subnet_id
+            'subnet_id': subnet_id, # deprecated by IPv6 multi-prefix
+            'subnet_ids': subnet_ids
         }
 
     def add_router_interface(self, context, router_id, interface_info):
@@ -574,11 +578,11 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         new_port = True
 
         if add_by_port:
-            port = self._add_interface_by_port(
-                context, router, interface_info['port_id'], device_owner)
+            port, subnets = self._add_interface_by_port(
+                    context, router, interface_info['port_id'], device_owner)
         elif add_by_sub:
-            port, new_port = self._add_interface_by_subnet(
-                context, router, interface_info['subnet_id'], device_owner)
+            port, subnets, new_port = self._add_interface_by_subnet(
+                    context, router, interface_info['subnet_id'], device_owner)
 
         if new_port:
             with context.session.begin(subtransactions=True):
@@ -590,8 +594,8 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                 context.session.add(router_port)
 
         return self._make_router_interface_info(
-            router.id, port['tenant_id'], port['id'],
-            port['fixed_ips'][-1]['subnet_id'])
+            router.id, port['tenant_id'], port['id'], subnets[-1]['id'],
+            [subnet['id'] for subnet in subnets])
 
     def _confirm_router_interface_not_in_use(self, context, router_id,
                                              subnet_id):
@@ -632,7 +636,7 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                     context, router_id, port_subnet_id)
         self._core_plugin.delete_port(context, port_db['id'],
                                       l3_port_check=False)
-        return (port_db, subnets[0])
+        return (port_db, subnets)
 
     def _remove_interface_by_subnet(self, context,
                                     router_id, subnet_id, owner):
@@ -661,12 +665,12 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                     self._core_plugin.update_port(context, p['id'],
                             {'port':
                                 {'fixed_ips': fixed_ips}})
-                    return (p, subnet)
+                    return (p, [subnet])
                 elif subnet_id in port_subnets:
                     # only one subnet on port - delete the port
                     self._core_plugin.delete_port(context, p['id'],
                                                   l3_port_check=False)
-                    return (p, subnet)
+                    return (p, [subnet])
         except exc.NoResultFound:
             pass
         raise l3.RouterInterfaceNotFoundForSubnet(router_id=router_id,
@@ -680,15 +684,17 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
         subnet_id = interface_info.get('subnet_id')
         device_owner = self._get_device_owner(context, router_id)
         if port_id:
-            port, subnet = self._remove_interface_by_port(context, router_id,
-                                                          port_id, subnet_id,
-                                                          device_owner)
+            port, subnets = self._remove_interface_by_port(context, router_id,
+                                                           port_id, subnet_id,
+                                                           device_owner)
         elif subnet_id:
-            port, subnet = self._remove_interface_by_subnet(
-                context, router_id, subnet_id, device_owner)
+            port, subnets = self._remove_interface_by_subnet(
+                    context, router_id, subnet_id, device_owner)
 
         return self._make_router_interface_info(router_id, port['tenant_id'],
-                                                port['id'], subnet['id'])
+                                                port['id'], subnets[0]['id'],
+                                                [subnet['id'] for subnet in
+                                                    subnets])
 
     def _get_floatingip(self, context, id):
         try:

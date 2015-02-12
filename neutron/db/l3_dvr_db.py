@@ -257,11 +257,11 @@ class L3_NAT_with_dvr_db_mixin(l3_db.L3_NAT_db_mixin,
         new_port = True
 
         if add_by_port:
-            port = self._add_interface_by_port(
-                context, router, interface_info['port_id'], device_owner)
+            port, subnets = self._add_interface_by_port(
+                    context, router, interface_info['port_id'], device_owner)
         elif add_by_sub:
-            port, new_port = self._add_interface_by_subnet(
-                context, router, interface_info['subnet_id'], device_owner)
+            port, subnets, new_port = self._add_interface_by_subnet(
+                    context, router, interface_info['subnet_id'], device_owner)
 
         if new_port:
             with context.session.begin(subtransactions=True):
@@ -278,8 +278,8 @@ class L3_NAT_with_dvr_db_mixin(l3_db.L3_NAT_db_mixin,
                     port['fixed_ips'][-1]['subnet_id'])
 
         router_interface_info = self._make_router_interface_info(
-            router_id, port['tenant_id'], port['id'],
-            port['fixed_ips'][-1]['subnet_id'])
+            router_id, port['tenant_id'], port['id'], subnets[-1]['id'],
+            [subnet['id'] for subnet in subnets])
         self.notify_router_interface_action(
             context, router_interface_info, 'add')
         return router_interface_info
@@ -295,18 +295,19 @@ class L3_NAT_with_dvr_db_mixin(l3_db.L3_NAT_db_mixin,
         device_owner = self._get_device_owner(context, router)
 
         if port_id:
-            port, subnet = self._remove_interface_by_port(
-                context, router_id, port_id, subnet_id, device_owner)
+            port, subnets = self._remove_interface_by_port(
+                    context, router_id, port_id, subnet_id, device_owner)
         elif subnet_id:
-            port, subnet = self._remove_interface_by_subnet(
-                context, router_id, subnet_id, device_owner)
+            port, subnets = self._remove_interface_by_subnet(
+                    context, router_id, subnet_id, device_owner)
 
         if router.extra_attributes.distributed and router.gw_port:
             self.delete_csnat_router_interface_ports(
                 context.elevated(), router, subnet_id=subnet_id)
 
         router_interface_info = self._make_router_interface_info(
-            router_id, port['tenant_id'], port['id'], subnet['id'])
+            router_id, port['tenant_id'], port['id'], subnets[0]['id'],
+            [subnet['id'] for subnet in subnets])
         self.notify_router_interface_action(
             context, router_interface_info, 'remove')
         return router_interface_info

@@ -1123,7 +1123,7 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
                 added_ip_addrs.append({'cidr': ip_cidr})
             for ip_cidr in ip_addrs:
                 if ip_cidr not in added_ip_addrs:
-                    old_ip_addrs.append(ip_cidr)
+                    old_ip_addrs.append(ip_cidr['cidr'])
             self.driver.init_l3(interface_name, added_ip_addrs,
                                 namespace=ri.ns_name,
                                 preserve_ips=old_ip_addrs)

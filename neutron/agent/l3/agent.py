@@ -445,7 +445,7 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
 
         return prefix_added_ports, prefix_deleted_ports
 
-    def _is_ipv6_port(self, port):
+    def _port_has_ipv6_subnet(self, port):
         for subnet in port['subnets']:
             if netaddr.IPNetwork(subnet['cidr']).version == 6:
                 return True
@@ -456,9 +456,9 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
         current_port_ids = set([p['id'] for p in internal_ports
                                 if p['admin_state_up']])
         existing_ipv6_port_ids = set([p['id'] for p in ri.internal_ports
-                                     if self._is_ipv6_port(p)])
+                                     if self._port_has_ipv6_subnet(p)])
         current_ipv6_port_ids = set([p['id'] for p in internal_ports
-                                    if self._is_ipv6_port(p)
+                                    if self._port_has_ipv6_subnet(p)
                                     and p['admin_state_up']])
         new_ports = [p for p in internal_ports if
                      p['id'] in current_port_ids and
@@ -476,13 +476,13 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
             self.internal_network_added(ri, p)
             ri.internal_ports.append(p)
             self._set_subnet_arp_info(ri, p)
-            if self._is_ipv6_port(p):
+            if self._port_has_ipv6_subnet(p):
                 enable_ra = True
 
         for p in old_ports:
             self.internal_network_removed(ri, p)
             ri.internal_ports.remove(p)
-            if self._is_ipv6_port(p):
+            if self._port_has_ipv6_subnet(p):
                 enable_ra = True
 
         for p in prefix_added_ports:

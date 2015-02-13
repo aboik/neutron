@@ -27,7 +27,7 @@ from neutron.db import model_base
 from neutron.db import models_v2
 from neutron.extensions import external_net
 from neutron.extensions import l3
-from neutron.i18n import _LI
+from neutron.i18n import _LI, _LE
 from neutron import manager
 from neutron.openstack.common import log as logging
 from neutron.openstack.common import uuidutils
@@ -492,6 +492,20 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                 raise n_exc.PortInUse(net_id=port['network_id'],
                                       port_id=port['id'],
                                       device_id=port['device_id'])
+
+            # Only allow one router port with IPv6 subnets per network id
+            if self._port_has_ipv6_subnet(port):
+                for existing_port in (rp.port for rp in router.attached_ports):
+                    if (existing_port['network_id'] == port['network_id'] and
+                            self._port_has_ipv6_subnet(existing_port)):
+                        msg = _LE("Cannot have multiple router ports with the "
+                                  "same network id if both contain IPv6 "
+                                  "subnets. Existing port %s has IPv6 "
+                                  "subnet(s) and network id %s" % (
+                                      existing_port['id'],
+                                      existing_port['network_id']))
+                        raise n_exc.BadRequest(resource='router', msg=msg)
+
             fixed_ips = [ip for ip in port['fixed_ips']]
             subnets = []
             for fixed_ip in fixed_ips:
@@ -502,6 +516,14 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                                                   port['network_id'],
                                                   subnet['id'],
                                                   subnet['cidr'])
+
+            # Keep the restriction against multiple IPv4 subnets
+            if len([subnet for subnet in subnets
+                if subnet['ip_version'] == 4]) > 1:
+                    msg = _LE("Cannot have multiple "
+                              "IPv4 subnets on router port")
+                    raise n_exc.BadRequest(resource='router', msg=msg)
+
             port.update({'device_id': router.id, 'device_owner': owner})
             return port, subnets
 

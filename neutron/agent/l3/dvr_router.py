@@ -194,13 +194,8 @@ class DvrRouter(router.RouterInfo):
             with excutils.save_and_reraise_exception():
                 LOG.exception(_LE("DVR: Failed updating arp entry"))
 
-    def _set_subnet_arp_info(self, port):
+    def _set_subnet_arp_info(self, subnet_id):
         """Set ARP info retrieved from Plugin for existing ports."""
-        if 'id' not in port['subnet']:
-            return
-
-        subnet_id = port['subnet']['id']
-
         # TODO(Carl) Can we eliminate the need to make this RPC while
         # processing a router.
         subnet_ports = self.agent.get_ports_by_subnet(subnet_id)

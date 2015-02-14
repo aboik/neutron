@@ -121,10 +121,9 @@ class AgentMixin(object):
         # connect snat_ports to br_int from SNAT namespace
         for port in snat_ports:
             # create interface_name
-            self._set_subnet_info(port)
             interface_name = self.get_snat_int_device_name(port['id'])
             self._internal_network_added(snat_ns.name, port['network_id'],
-                                         port['id'], port['ip_cidr'],
+                                         port['id'], port['fixed_ips'],
                                          port['mac_address'], interface_name,
                                          SNAT_INT_DEV_PREFIX)
         self._external_gateway_added(ri, ex_gw_port, gw_interface_name,
@@ -137,29 +136,33 @@ class AgentMixin(object):
 
     def _snat_redirect_add(self, ri, gateway, sn_port, sn_int):
         """Adds rules and routes for SNAT redirection."""
-        try:
-            ip_cidr = sn_port['ip_cidr']
-            snat_idx = self._get_snat_idx(ip_cidr)
-            ns_ipr = ip_lib.IpRule(namespace=ri.ns_name)
-            ns_ipd = ip_lib.IPDevice(sn_int, namespace=ri.ns_name)
-            ns_ipd.route.add_gateway(gateway, table=snat_idx)
-            ns_ipr.add(ip_cidr, snat_idx, snat_idx)
-            ns_ipr.netns.execute(['sysctl', '-w', 'net.ipv4.conf.%s.'
-                                 'send_redirects=0' % sn_int])
-        except Exception:
-            LOG.exception(_LE('DVR: error adding redirection logic'))
+        for fixed_ip in sn_port['fixed_ips']:
+            try:
+                ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
+                                     fixed_ip['prefixlen'])
+                snat_idx = self._get_snat_idx(ip_cidr)
+                ns_ipr = ip_lib.IpRule(namespace=ri.ns_name)
+                ns_ipd = ip_lib.IPDevice(sn_int, namespace=ri.ns_name)
+                ns_ipd.route.add_gateway(gateway, table=snat_idx)
+                ns_ipr.add(ip_cidr, snat_idx, snat_idx)
+                ns_ipr.netns.execute(['sysctl', '-w', 'net.ipv4.conf.%s.'
+                                      'send_redirects=0' % sn_int])
+            except Exception:
+                LOG.exception(_LE('DVR: error adding redirection logic'))
 
     def _snat_redirect_remove(self, ri, sn_port, sn_int):
         """Removes rules and routes for SNAT redirection."""
-        try:
-            ip_cidr = sn_port['ip_cidr']
-            snat_idx = self._get_snat_idx(ip_cidr)
-            ns_ipr = ip_lib.IpRule(namespace=ri.ns_name)
-            ns_ipd = ip_lib.IPDevice(sn_int, namespace=ri.ns_name)
-            ns_ipd.route.delete_gateway(table=snat_idx)
-            ns_ipr.delete(ip_cidr, snat_idx, snat_idx)
-        except Exception:
-            LOG.exception(_LE('DVR: removed snat failed'))
+        for fixed_ip in sn_port['fixed_ips']:
+            try:
+                ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
+                                     fixed_ip['prefixlen'])
+                snat_idx = self._get_snat_idx(ip_cidr)
+                ns_ipr = ip_lib.IpRule(namespace=ri.ns_name)
+                ns_ipd = ip_lib.IPDevice(sn_int, namespace=ri.ns_name)
+                ns_ipd.route.delete_gateway(table=snat_idx)
+                ns_ipr.delete(ip_cidr, snat_idx, snat_idx)
+            except Exception:
+                LOG.exception(_LE('DVR: removed snat failed'))
 
     def add_arp_entry(self, context, payload):
         """Add arp entry into router namespace.  Called from RPC."""

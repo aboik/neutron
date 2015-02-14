@@ -78,11 +78,13 @@ class LinuxInterfaceDriver(object):
         self.conf = conf
 
     def init_l3(self, device_name, ip_cidrs, namespace=None,
-                preserve_ips=[], gateway=None, extra_subnets=[]):
+                preserve_ips=[], gateway_ips=[], extra_subnets=[],
+                is_ext_gateway=False):
         """Set the L3 settings for the interface using data from the port.
 
         ip_cidrs: list of 'X.X.X.X/YY' strings
         preserve_ips: list of ip cidrs that should not be removed from device
+        gateway_ips: For gateway ports, list of external gateway ip addresses
         """
         device = ip_lib.IPDevice(device_name, namespace=namespace)
 
@@ -92,7 +94,6 @@ class LinuxInterfaceDriver(object):
 
         # add new addresses
         for ip_cidr in ip_cidrs:
-
             net = netaddr.IPNetwork(ip_cidr)
             # Convert to compact IPv6 address because the return values of
             # "ip addr list" are compact.
@@ -110,14 +111,14 @@ class LinuxInterfaceDriver(object):
             device.addr.add(net.version, ip_cidr,
                             str(net.broadcast.format(netaddr.ipv6_full)))
 
+        for gateway_ip in gateway_ips:
+            device.route.add_gateway(gateway_ip)
+
         # clean up any old addresses
         for ip_cidr, ip_version in previous.items():
             if ip_cidr not in preserve_ips:
                 device.addr.delete(ip_version, ip_cidr)
                 self.delete_conntrack_state(namespace=namespace, ip=ip_cidr)
-
-        if gateway:
-            device.route.add_gateway(gateway)
 
         new_onlink_routes = set(s['cidr'] for s in extra_subnets)
         existing_onlink_routes = set(device.route.list_onlink_routes())

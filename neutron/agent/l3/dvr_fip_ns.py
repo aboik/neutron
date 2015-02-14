@@ -12,7 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import netaddr
 import os
 
 from neutron.agent.l3 import link_local_allocator as lla
@@ -94,20 +93,28 @@ class FipNamespace(object):
                              namespace=ns_name,
                              prefix=FIP_EXT_DEV_PREFIX)
 
-        self.driver.init_l3(interface_name,
-                            [ex_gw_port['ip_cidr']],
+        ip_addrs = []
+        for fixed_ip in ex_gw_port['fixed_ips']:
+            ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
+                                 fixed_ip['prefixlen'])
+            ip_addrs.append({'cidr': ip_cidr})
+        self.driver.init_l3(interface_name, ip_addrs,
                             namespace=ns_name)
 
-        ip_address = str(netaddr.IPNetwork(ex_gw_port['ip_cidr']).ip)
-        ip_lib.send_gratuitous_arp(ns_name,
-                                   interface_name,
-                                   ip_address,
-                                   self.agent_conf.send_arp_for_ha)
+        for ip_addr in ip_addrs:
+            ip_cidr = ip_addr['cidr']
+            ip_address = ip_cidr.split('/')[0]
+            ip_lib.send_gratuitous_arp(ns_name,
+                                       interface_name,
+                                       ip_address,
+                                       self.agent_conf.send_arp_for_ha)
 
-        gw_ip = ex_gw_port['subnet']['gateway_ip']
-        if gw_ip:
-            ipd = ip_lib.IPDevice(interface_name, namespace=ns_name)
-            ipd.route.add_gateway(gw_ip)
+        for subnet in ex_gw_port['subnets']:
+            gw_ip = subnet.get('gateway_ip')
+            if gw_ip:
+                ipd = ip_lib.IPDevice(interface_name,
+                                      namespace=ns_name)
+                ipd.route.add_gateway(gw_ip)
 
         cmd = ['sysctl', '-w', 'net.ipv4.conf.%s.proxy_arp=1' % interface_name]
         # TODO(Carl) mlavelle's work has self.ip_wrapper

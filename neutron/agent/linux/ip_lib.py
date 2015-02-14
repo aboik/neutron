@@ -394,22 +394,28 @@ class IpRouteCommand(IpDeviceCommandBase):
     COMMAND = 'route'
 
     def add_gateway(self, gateway, metric=None, table=None):
+        ip_version = netaddr.IPAddress(gateway).version
         args = ['replace', 'default', 'via', gateway]
         if metric:
             args += ['metric', metric]
         args += ['dev', self.name]
         if table:
             args += ['table', table]
-        self._as_root(*args)
+        self._as_root(*args, options=[ip_version])
 
-    def delete_gateway(self, gateway=None, table=None):
+    def delete_gateway(self, gateway=None, table=None, ip_version=None):
         args = ['del', 'default']
         if gateway:
+            ip_version = netaddr.IPAddress(gateway).version
             args += ['via', gateway]
         args += ['dev', self.name]
         if table:
             args += ['table', table]
-        self._as_root(*args)
+        if ip_version:
+            kwargs = {'options': [ip_version]}
+        else:
+            kwargs = {}
+        self._as_root(*args, **kwargs)
 
     def list_onlink_routes(self):
         def iterate_routes():
@@ -577,16 +583,17 @@ def device_exists(device_name, namespace=None):
     return bool(address)
 
 
-def device_exists_with_ip_mac(device_name, ip_cidr, mac, namespace=None):
-    """Return True if the device with the given IP and MAC addresses
+def device_exists_with_ips_and_mac(device_name, ip_cidrs, mac, namespace=None):
+    """Return True if the device with the given IPs and MAC addresses
     exists in the namespace.
     """
     try:
         device = IPDevice(device_name, namespace=namespace)
         if mac != device.link.address:
             return False
-        if ip_cidr not in (ip['cidr'] for ip in device.addr.list()):
-            return False
+        for ip_cidr in ip_cidrs:
+            if ip_cidr not in [ip['cidr'] for ip in device.addr.list()]:
+                return False
     except RuntimeError:
         return False
     else:
@@ -661,7 +668,11 @@ def send_gratuitous_arp(ns_name, iface_name, address, count):
     def arping():
         _arping(ns_name, iface_name, address, count)
 
-    if count > 0:
+    # Note(leblancd): Gratuitous arp should only be sent for IPv4. This
+    # should get taken care of by Neutron bug #1357068, which is currently
+    # abandoned. Adding the test for version == 4 for now until
+    # but #1357068 is resolved.
+    if (netaddr.IPAddress(address).version == 4 and count > 0):
         eventlet.spawn_n(arping)
 
 

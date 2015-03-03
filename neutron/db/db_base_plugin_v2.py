@@ -1135,7 +1135,30 @@ class NeutronDbPluginV2(neutron_plugin_base_v2.NeutronPluginBaseV2,
                     last_ip=pool['end'])
                 context.session.add(ip_range)
 
+            # If this subnet supports auto-addressing, then update any
+            # internal ports on the network with addresses for this subnet.
+            self._add_auto_addrs_on_network_ports(context, subnet)
+
         return self._make_subnet_dict(subnet)
+
+    def _add_auto_addrs_on_network_ports(self, context, subnet):
+        """If subnet uses auto-addressing, add addrs for ports on the net."""
+        if ipv6_utils.is_auto_address_subnet(subnet):
+            network_id = subnet['network_id']
+            port_qry = context.session.query(models_v2.Port)
+            for port in port_qry.filter(
+                and_(models_v2.Port.network_id == network_id,
+                     models_v2.Port.device_owner !=
+                     constants.DEVICE_OWNER_ROUTER_INTF,
+                     models_v2.Port.device_owner !=
+                     constants.DEVICE_OWNER_DVR_INTERFACE)):
+                ip_address = self._calculate_ipv6_eui64_addr(
+                    context, subnet, port['mac_address'])
+                allocated = models_v2.IPAllocation(network_id=network_id,
+                                                   port_id=port['id'],
+                                                   ip_address=ip_address,
+                                                   subnet_id=subnet['id'])
+                context.session.add(allocated)
 
     def _update_subnet_dns_nameservers(self, context, id, s):
         old_dns_list = self._get_dns_by_subnet(context, id)

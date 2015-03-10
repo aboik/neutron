@@ -2964,21 +2964,23 @@ class TestSubnetsV2(NeutronDbPluginV2TestCase):
                     self.assertEqual(res.status_int,
                                      webob.exc.HTTPNoContent.code)
 
-    def _create_slaac_subnet_and_port(self, port_owner=None):
-        # Create an IPv6 SLAAC subnet and a port using that subnet
+    def _create_slaac_subnet(self, cidr='fe80::/64', gateway='fe80::1'):
+        # Create an IPv6 SLAAC subnet
         res = self._create_network(fmt=self.fmt, name='net',
                                    admin_state_up=True)
         network = self.deserialize(self.fmt, res)
-        subnet = self._make_subnet(self.fmt, network, gateway='fe80::1',
-                                   cidr='fe80::/64', ip_version=6,
+        subnet = self._make_subnet(self.fmt, network, gateway=gateway,
+                                   cidr=cidr, ip_version=6,
                                    ipv6_ra_mode=constants.IPV6_SLAAC,
                                    ipv6_address_mode=constants.IPV6_SLAAC)
-        if port_owner:
-            res = self._create_port(self.fmt, net_id=network['network']['id'],
-                                    device_owner=port_owner)
-        else:
-            res = self._create_port(self.fmt, net_id=network['network']['id'])
+        return subnet
 
+    def _create_port_on_slaac_subnet(self, net_id, port_owner=None,
+                                     fixed_ips=None):
+        kwargs = dict()
+        if port_owner: kwargs["device_owner"] = port_owner
+        if fixed_ips: kwargs["fixed_ips"] = fixed_ips
+        res = self._create_port(self.fmt, net_id=net_id, **kwargs)
         port = self.deserialize(self.fmt, res)
         self.assertEqual(1, len(port['port']['fixed_ips']))
 
@@ -2988,11 +2990,13 @@ class TestSubnetsV2(NeutronDbPluginV2TestCase):
         sport = self.deserialize(self.fmt, req.get_response(self.api))
         self.assertEqual(1, len(sport['port']['fixed_ips']))
 
-        return subnet, port
+        return port
 
     def test_delete_subnet_ipv6_slaac_port_exists(self):
         """Test IPv6 SLAAC subnet delete when a port is still using subnet."""
-        subnet, port = self._create_slaac_subnet_and_port()
+        subnet = self._create_slaac_subnet()
+        port = self._create_port_on_slaac_subnet(
+                net_id=subnet['subnet']['network_id'])
         # Delete the subnet
         req = self.new_delete_request('subnets', subnet['subnet']['id'])
         res = req.get_response(self.api)
@@ -3005,8 +3009,14 @@ class TestSubnetsV2(NeutronDbPluginV2TestCase):
 
     def test_delete_subnet_ipv6_slaac_router_port_exists(self):
         """Test IPv6 SLAAC subnet delete with a router port using the subnet"""
-        subnet, port = self._create_slaac_subnet_and_port(
-                constants.DEVICE_OWNER_ROUTER_INTF)
+        subnet = self._create_slaac_subnet(cidr='dead:beef::/64',
+                                           gateway='dead:beef::1')
+        port = self._create_port_on_slaac_subnet(
+                net_id=subnet['subnet']['network_id'],
+                port_owner=constants.DEVICE_OWNER_ROUTER_INTF,
+                fixed_ips=[{
+                    'subnet_id': subnet['subnet']['id'],
+                    'ip_address': 'dead:beef::1'}])
         # Delete the subnet and assert that we get a HTTP 409 error
         req = self.new_delete_request('subnets', subnet['subnet']['id'])
         res = req.get_response(self.api)

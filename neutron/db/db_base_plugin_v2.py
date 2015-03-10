@@ -1181,7 +1181,7 @@ class NeutronDbPluginV2(neutron_plugin_base_v2.NeutronPluginBaseV2,
                      models_v2.Port.device_owner !=
                      constants.DEVICE_OWNER_DVR_INTERFACE)):
                 ip_address = self._calculate_ipv6_eui64_addr(
-                    context, subnet, port['mac_address'])
+                    context, subnet, port)
                 allocated = models_v2.IPAllocation(network_id=network_id,
                                                    port_id=port['id'],
                                                    ip_address=ip_address,

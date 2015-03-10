@@ -522,7 +522,7 @@ class NeutronDbPluginV2(neutron_plugin_base_v2.NeutronPluginBaseV2,
                                      subnet['id'], ip_address.format()):
             raise n_exc.IpAddressInUse(net_id=port['network_id'],
                                        ip_address=ip_address.format())
-        return ip_address
+        return ip_address.format()
 
     def _allocate_ips_for_port(self, context, port):
         """Allocate IP addresses for the port.
@@ -582,7 +582,7 @@ class NeutronDbPluginV2(neutron_plugin_base_v2.NeutronPluginBaseV2,
             # automatically generated and are implicitly included.
             ip_address = self._calculate_ipv6_eui64_addr(context,
                                                          subnet, p)
-            ips.append({'ip_address': ip_address.format(),
+            ips.append({'ip_address': ip_address,
                         'subnet_id': subnet['id']})
 
         return ips

@@ -869,7 +869,7 @@ class L3NATAgent(firewall_l3_agent.FWaaSL3AgentRpcCallback,
             for fixed_ip in added_fixed_ips:
                 ip_cidr = "%s/%s" % (fixed_ip['ip_address'],
                                      fixed_ip['prefixlen'])
-                added_ip_addrs.append({'cidr': ip_cidr})
+                added_ip_addrs.append(ip_cidr)
             for ip_cidr in ip_addrs:
                 if ip_cidr not in added_ip_addrs:
                     old_ip_addrs.append(ip_cidr['cidr'])

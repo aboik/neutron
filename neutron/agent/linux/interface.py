@@ -90,7 +90,7 @@ class LinuxInterfaceDriver(object):
 
         previous = set()
         for address in (device.addr.list(scope='global', filters=['permanent'])
-                      + device.addr.list(scope='site', filters=['permanent'])): 
+                      + device.addr.list(scope='site', filters=['permanent'])):
             previous.add(address['cidr'])
 
         # add new addresses

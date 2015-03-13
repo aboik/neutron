@@ -547,6 +547,12 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
             if netaddr.IPNetwork(fixed_ip['ip_address']).version == 6:
                 return True
 
+    def _find_ipv6_router_port_by_network(self, router, net_id):
+        for port in router.attached_ports:
+            p = port['port']
+            if p['network_id'] == net_id and self._port_has_ipv6_subnet(p):
+                return port
+
     def _add_interface_by_subnet(self, context, router, subnet_id, owner):
         subnet = self._core_plugin._get_subnet(context, subnet_id)
         if not subnet['gateway_ip']:
@@ -566,21 +572,16 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                     'subnet_id': subnet['id']}
 
         if subnet['ip_version'] == 6:
-            existing_ipv6_ports = [rp for rp in router.attached_ports
-                                   if self._port_has_ipv6_subnet(rp['port'])]
-            # Add new prefix to an existing port with the same network id
+            # Add new prefix to an existing ipv6 port with the same network id
             # if one exists
-            for existing_port in existing_ipv6_ports:
-                if existing_port['port']['network_id'] == subnet['network_id']:
-                    fixed_ips = []
-                    for fip in existing_port['port']['fixed_ips']:
-                        fixed_ips.append({'ip_address': fip.ip_address,
-                                          'subnet_id': fip.subnet_id})
-                    fixed_ips.append(fixed_ip)
-                    return self._core_plugin.update_port(context,
-                            existing_port['port_id'],
-                            {'port':
-                                {'fixed_ips': fixed_ips}}), [subnet], False
+            port = self._find_ipv6_router_port_by_network(router,
+                                                          subnet['network_id'])
+            if port:
+                fixed_ips = list(port['port']['fixed_ips'])
+                fixed_ips.append(fixed_ip)
+                return self._core_plugin.update_port(context,
+                        port['port_id'], {'port':
+                            {'fixed_ips': fixed_ips}}), [subnet], False
 
         return self._core_plugin.create_port(context, {
             'port':
@@ -698,12 +699,8 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
                 port_subnets = [fip['subnet_id'] for fip in p['fixed_ips']]
                 if subnet_id in port_subnets and len(port_subnets) > 1:
                     # multiple prefix port - delete prefix from port
-                    fixed_ips = []
-                    for fip in p['fixed_ips']:
-                        if fip['subnet_id'] != subnet_id:
-                            fixed_ips.append({'subnet_id': fip['subnet_id'],
-                                              'ip_address':
-                                              fip['ip_address']})
+                    fixed_ips = [fip for fip in p['fixed_ips'] if
+                            fip['subnet_id'] != subnet_id]
                     self._core_plugin.update_port(context, p['id'],
                             {'port':
                                 {'fixed_ips': fixed_ips}})

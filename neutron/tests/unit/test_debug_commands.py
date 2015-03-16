@@ -132,8 +132,7 @@ class TestDebugCommands(base.BaseTestCase):
                                                      bridge=None,
                                                      namespace=namespace),
                                       mock.call.init_l3('tap12345678-12',
-                                                        [{'cidr':
-                                                        '10.0.0.3/24'}],
+                                                        ['10.0.0.3/24'],
                                                         namespace=namespace
                                                         )])
 
@@ -178,8 +177,7 @@ class TestDebugCommands(base.BaseTestCase):
                                                      bridge='br-ex',
                                                      namespace=namespace),
                                       mock.call.init_l3('tap12345678-12',
-                                                        [{'cidr':
-                                                        '10.0.0.3/24'}],
+                                                        ['10.0.0.3/24'],
                                                         namespace=namespace
                                                         )])
 
@@ -327,8 +325,7 @@ class TestDebugCommands(base.BaseTestCase):
                     mock.call.show_subnet('fake_subnet')]
         self.client.assert_has_calls(expected)
         self.driver.assert_has_calls([mock.call.init_l3('tap12345678-12',
-                                                        [{'cidr':
-                                                        '10.0.0.3/24'}],
+                                                        ['10.0.0.3/24'],
                                                         namespace=namespace
                                                         )])
 

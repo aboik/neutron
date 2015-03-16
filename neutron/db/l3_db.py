@@ -543,9 +543,10 @@ class L3_NAT_dbonly_mixin(l3.RouterPluginBase):
             return port, subnets
 
     def _port_has_ipv6_subnet(self, port):
-        for fixed_ip in port['fixed_ips']:
-            if netaddr.IPNetwork(fixed_ip['ip_address']).version == 6:
-                return True
+        if 'subnet' in port:
+            for fixed_ip in port['fixed_ips']:
+                if netaddr.IPNetwork(fixed_ip['ip_address']).version == 6:
+                    return True
 
     def _find_ipv6_router_port_by_network(self, router, net_id):
         for port in router.attached_ports:

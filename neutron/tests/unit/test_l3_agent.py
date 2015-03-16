@@ -1343,8 +1343,8 @@ class TestBasicRouterOperations(BasicRouterOperationsFramework):
         radvd_config = self.utils_replace_file.call_args[0][1].split()
         # Assert we have a prefix from IPV6_SLAAC and a prefix from
         # DHCPV6_STATELESS on one interface
-        assert radvd_config.count("prefix") == 2
-        assert radvd_config.count("interface") == 1
+        self.assertEqual(2, radvd_config.count("prefix"))
+        self.assertEqual(1, radvd_config.count("interface"))
 
     def test_process_router_ipv6_subnets_added_to_existing_port(self):
         agent = l3_agent.L3NATAgent(HOSTNAME, self.conf)
@@ -1358,6 +1358,11 @@ class TestBasicRouterOperations(BasicRouterOperationsFramework):
              'address_mode': l3_constants.IPV6_SLAAC}])
         self._process_router_instance_for_agent(agent, ri, router)
         self._assert_ri_process_enabled(ri, 'radvd')
+        radvd_config = self.utils_replace_file.call_args[0][1].split()
+        self.assertEqual(1, len(ri.internal_ports[1]['subnets']))
+        self.assertEqual(1, len(ri.internal_ports[1]['fixed_ips']))
+        self.assertEqual(1, radvd_config.count("prefix"))
+        self.assertEqual(1, radvd_config.count("interface"))
         # Reset mocks to verify radvd enabled and configured correctly
         # after second subnet added to interface
         self.external_process.reset_mock()
@@ -1373,10 +1378,10 @@ class TestBasicRouterOperations(BasicRouterOperationsFramework):
         # should have two prefixes
         self._assert_ri_process_enabled(ri, 'radvd')
         radvd_config = self.utils_replace_file.call_args[0][1].split()
-        assert len(ri.internal_ports[1]['subnets']) == 2
-        assert len(ri.internal_ports[1]['fixed_ips']) == 2
-        assert radvd_config.count("prefix") == 2
-        assert radvd_config.count("interface") == 1
+        self.assertEqual(2, len(ri.internal_ports[1]['subnets']))
+        self.assertEqual(2, len(ri.internal_ports[1]['fixed_ips']))
+        self.assertEqual(2, radvd_config.count("prefix"))
+        self.assertEqual(1, radvd_config.count("interface"))
 
     def test_process_router_ipv6v4_interface_added(self):
         agent = l3_agent.L3NATAgent(HOSTNAME, self.conf)
@@ -1452,10 +1457,10 @@ class TestBasicRouterOperations(BasicRouterOperationsFramework):
         # prefix on the interface
         self._assert_ri_process_enabled(ri, 'radvd')
         radvd_config = self.utils_replace_file.call_args[0][1].split()
-        assert len(ri.internal_ports[1]['subnets']) == 1
-        assert len(ri.internal_ports[1]['fixed_ips']) == 1
-        assert radvd_config.count("interface") == 1
-        assert radvd_config.count("prefix") == 1
+        self.assertEqual(1, len(ri.internal_ports[1]['subnets']))
+        self.assertEqual(1, len(ri.internal_ports[1]['fixed_ips']))
+        self.assertEqual(1, radvd_config.count("interface"))
+        self.assertEqual(1, radvd_config.count("prefix"))
 
     def test_process_router_internal_network_added_unexpected_error(self):
         agent = l3_agent.L3NATAgent(HOSTNAME, self.conf)
